@@ -26,29 +26,21 @@ async function fetchFromGoogleSheets() {
             const header = data.values[0];
             const newOrders = data.values.slice(1).map(row => {
                 return {
+                    studentNumber: row[1] || '-', // Student Number
                     studentName: row[2], // Student Name
                     itemName: row[6], // Order Items
                     quantity: 1, // Default to 1
                     price: parseFloat(row[7]) || 0, // Total Amount
-                    paymentStatus: (row[5] && row[5].toLowerCase() === 'paid') ? 'paid' : 'unpaid', // Payment Mode
-                    date: row[0] // Timestamp
+                    gcashReference: row[8] || '', // GCash Reference Number
+                    paymentMode: row[5] || '-', // Payment Mode
+                    paymentStatus: (row[5] && row[5].toLowerCase() === 'paid') ? 'paid' : 'unpaid', // Payment Status (still based on Payment Mode for now)
+                    timestamp: row[0] || '', // Timestamp (raw)
+                    date: row[0] // Timestamp (for merging)
                 };
             });
 
-            // Merge with existing orders, avoiding duplicates (by studentName, itemName, and date)
-            newOrders.forEach(newOrder => {
-                const existingIndex = orders.findIndex(o =>
-                    o.studentName === newOrder.studentName &&
-                    o.itemName === newOrder.itemName &&
-                    o.date === newOrder.date
-                );
-                if (existingIndex === -1) {
-                    orders.push(newOrder);
-                } else {
-                    orders[existingIndex] = newOrder;
-                }
-            });
-
+            // Replace local orders with the new data from Google Sheets
+            orders = newOrders;
             saveOrders();
             updateOrdersList();
             showNotification('Data synchronized successfully!', 'success');
@@ -73,18 +65,27 @@ function showNotification(message, type = 'info') {
 // Add new order
 function addOrder(event) {
     event.preventDefault();
+    const studentNumber = document.getElementById('studentNumber').value;
     const studentName = document.getElementById('studentName').value;
     const itemName = document.getElementById('itemName').value;
     const quantity = parseInt(document.getElementById('quantity').value);
     const price = parseFloat(document.getElementById('price').value);
+    const gcashReference = document.getElementById('gcashReference').value;
+    const paymentMode = document.getElementById('paymentMode').value || '-';
     const paymentStatus = document.getElementById('paymentStatus').value;
-    const date = new Date().toISOString();
+    const now = new Date();
+    const timestamp = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+    const date = now.toISOString();
     const order = {
+        studentNumber,
         studentName,
         itemName,
         quantity,
         price,
+        gcashReference,
+        paymentMode,
         paymentStatus,
+        timestamp,
         date
     };
     orders.push(order);
@@ -98,61 +99,177 @@ function saveOrders() {
     localStorage.setItem('orders', JSON.stringify(orders));
 }
 
-// Update the orders list in the table
+let searchQuery = '';
+let filterStartDate = '';
+let filterEndDate = '';
+let filterPaymentStatus = '';
+let filterPaymentMode = '';
+
 function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
     ordersList.innerHTML = '';
+    // Group orders by studentNumber
+    const grouped = {};
     orders.forEach(order => {
-        const row = document.createElement('tr');
-        const total = order.quantity * order.price;
-        row.innerHTML = `
-            <td>${order.studentName}</td>
-            <td>${order.itemName}</td>
-            <td>${order.quantity}</td>
-            <td>${formatCurrency(order.price)}</td>
-            <td>${formatCurrency(total)}</td>
-            <td>
-                <span class="payment-status ${order.paymentStatus}">
-                    ${order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1)}
-                </span>
-            </td>
-            <td class="action-buttons">
-                <button class="btn btn-sm btn-success" onclick="updatePaymentStatusByIndex(${orders.indexOf(order)}, 'paid')">
-                    Mark Paid
-                </button>
-                <button class="btn btn-sm btn-warning" onclick="updatePaymentStatusByIndex(${orders.indexOf(order)}, 'unpaid')">
-                    Mark Unpaid
-                </button>
-                <button class="btn btn-sm btn-danger" onclick="deleteOrderByIndex(${orders.indexOf(order)})">
-                    Delete
-                </button>
-            </td>
-        `;
-        ordersList.appendChild(row);
+        if (!grouped[order.studentNumber]) grouped[order.studentNumber] = [];
+        grouped[order.studentNumber].push(order);
+    });
+    const studentNumbers = Object.keys(grouped);
+    studentNumbers.forEach((studentNumber, groupIdx) => {
+        const group = grouped[studentNumber];
+        // Collect all items for this student
+        let allItems = [];
+        group.forEach(order => {
+            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+            items.forEach(itemStr => {
+                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                allItems.push({
+                    itemName,
+                    quantity,
+                    order
+                });
+            });
+        });
+        // Filter by search query and filters
+        const matchesSearch = (
+            studentNumber.toLowerCase().includes(searchQuery) ||
+            group[0].studentName.toLowerCase().includes(searchQuery) ||
+            allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
+            group[0].gcashReference?.toLowerCase().includes(searchQuery)
+        );
+        if (!matchesSearch && searchQuery) return;
+        // Filter by payment status
+        if (filterPaymentStatus && group[0].paymentStatus !== filterPaymentStatus) return;
+        // Filter by payment mode
+        if (filterPaymentMode && group[0].paymentMode.toLowerCase() !== filterPaymentMode.toLowerCase()) return;
+        // Filter by date range
+        if (filterStartDate || filterEndDate) {
+            let orderDate = '';
+            if (group[0].timestamp && group[0].timestamp.length > 0) {
+                // Try to parse as ISO or YYYY-MM-DD
+                if (group[0].timestamp.length > 10 && group[0].timestamp.includes('T')) {
+                    orderDate = group[0].timestamp.split('T')[0];
+                } else {
+                    orderDate = group[0].timestamp.split(' ')[0];
+                }
+            }
+            if (filterStartDate && orderDate < filterStartDate) return;
+            if (filterEndDate && orderDate > filterEndDate) return;
+        }
+        // Use the price from the first order as the total (do not multiply by quantity)
+        const total = group[0].price;
+        // Use the first order for student info
+        const firstOrder = group[0];
+        // Format timestamp for display
+        let displayTimestamp = '-';
+        if (firstOrder.timestamp) {
+            if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                const d = new Date(firstOrder.timestamp);
+                displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            } else {
+                displayTimestamp = firstOrder.timestamp;
+            }
+        }
+        // Determine group class for coloring
+        const groupClass = groupIdx % 2 === 0 ? 'student-group-even' : 'student-group-odd';
+        // Render rows with rowspan for student info and summary columns
+        allItems.forEach((item, idx) => {
+            const row = document.createElement('tr');
+            row.className = groupClass;
+            let cells = '';
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+            }
+            cells += `<td>${item.itemName}</td>`;
+            cells += `<td>${item.quantity}</td>`;
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference ? firstOrder.gcashReference : '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode ? firstOrder.paymentMode : '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                cells += `<td rowspan="${allItems.length}" class="action-buttons">
+                    <button class="btn btn-sm btn-success" onclick="markAllPaid('${studentNumber}')">Mark Paid</button>
+                    <button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${studentNumber}')">Mark Unpaid</button>
+                </td>`;
+            }
+            row.innerHTML = cells;
+            ordersList.appendChild(row);
+        });
     });
 }
 
-// Update payment status by index
-function updatePaymentStatusByIndex(index, newStatus) {
-    if (orders[index]) {
-        orders[index].paymentStatus = newStatus;
-        saveOrders();
-        updateOrdersList();
+document.addEventListener('DOMContentLoaded', function() {
+    const searchInput = document.getElementById('searchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', function(e) {
+            searchQuery = e.target.value.toLowerCase();
+            updateOrdersList();
+        });
     }
+    const startDateInput = document.getElementById('filterStartDate');
+    if (startDateInput) {
+        startDateInput.addEventListener('change', function(e) {
+            filterStartDate = e.target.value;
+            updateOrdersList();
+        });
+    }
+    const endDateInput = document.getElementById('filterEndDate');
+    if (endDateInput) {
+        endDateInput.addEventListener('change', function(e) {
+            filterEndDate = e.target.value;
+            updateOrdersList();
+        });
+    }
+    const paymentStatusInput = document.getElementById('filterPaymentStatus');
+    if (paymentStatusInput) {
+        paymentStatusInput.addEventListener('change', function(e) {
+            filterPaymentStatus = e.target.value;
+            updateOrdersList();
+        });
+    }
+    const paymentModeInput = document.getElementById('filterPaymentMode');
+    if (paymentModeInput) {
+        paymentModeInput.addEventListener('change', function(e) {
+            filterPaymentMode = e.target.value;
+            updateOrdersList();
+        });
+    }
+    updateOrdersList();
+});
+
+// Mark all orders for a student number as paid
+function markAllPaid(studentNumber) {
+    orders.forEach(order => {
+        if (order.studentNumber === studentNumber) {
+            order.paymentStatus = 'paid';
+        }
+    });
+    saveOrders();
+    updateOrdersList();
 }
 
-// Delete order by index
-function deleteOrderByIndex(index) {
-    if (confirm('Are you sure you want to delete this order?')) {
-        orders.splice(index, 1);
-        saveOrders();
-        updateOrdersList();
-    }
+// Mark all orders for a student number as unpaid
+function markAllUnpaid(studentNumber) {
+    orders.forEach(order => {
+        if (order.studentNumber === studentNumber) {
+            order.paymentStatus = 'unpaid';
+        }
+    });
+    saveOrders();
+    updateOrdersList();
 }
 
 // Initialize the form submission handler
-document.getElementById('orderForm').addEventListener('submit', addOrder);
+const orderForm = document.getElementById('orderForm');
+if (orderForm) {
+    orderForm.addEventListener('submit', addOrder);
+}
 // Add sync button handler
-document.getElementById('syncButton').addEventListener('click', fetchFromGoogleSheets);
-// Initial load of orders
-updateOrdersList(); 
+const syncButton = document.getElementById('syncButton');
+if (syncButton) {
+    syncButton.addEventListener('click', fetchFromGoogleSheets);
+} 

@@ -61,7 +61,8 @@ body {
 .action-buttons .btn {
     padding: 0.25rem 0.5rem;
     font-size: 0.875rem;
-    margin-right: 5px;
+    margin-bottom: 6px;
+    margin-right: 0;
 }
 
 #referenceNumber {
@@ -101,4 +102,12 @@ body {
 
 #syncButton i {
     font-size: 1.1em;
+}
+
+/* Grouped student rows coloring */
+.student-group-even td {
+    background-color: #f8f9fa;
+}
+.student-group-odd td {
+    background-color: #ffffff;
 } 
