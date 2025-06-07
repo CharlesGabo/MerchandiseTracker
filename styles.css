@@ -104,10 +104,34 @@ body {
     font-size: 1.1em;
 }
 
-/* Grouped student rows coloring */
-.student-group-even td {
+/* Styles for same student highlighting */
+.same-student {
+    background-color: #fff3cd !important;
+    border-left: 4px solid #ffc107;
+}
+
+.same-student:hover {
+    background-color: #ffe69c !important;
+}
+
+/* Update existing student group styles to work with new highlighting */
+.student-group-even {
     background-color: #f8f9fa;
 }
-.student-group-odd td {
+
+.student-group-odd {
     background-color: #ffffff;
+}
+
+.student-group-even.same-student,
+.student-group-odd.same-student {
+    background-color: #fff3cd !important;
+}
+
+/* Add a visual indicator for same student */
+.same-student-indicator {
+    color: #856404;
+    font-size: 0.8em;
+    margin-left: 5px;
+    font-style: italic;
 } 

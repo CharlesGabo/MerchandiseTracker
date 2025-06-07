@@ -104,20 +104,68 @@ let filterStartDate = '';
 let filterEndDate = '';
 let filterPaymentStatus = '';
 let filterPaymentMode = '';
+let filterOrderCount = '';
 
 function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
     ordersList.innerHTML = '';
-    // Group orders by studentNumber
-    const grouped = {};
+    
+    // First, group orders by student number to identify same students
+    const studentGroups = {};
     orders.forEach(order => {
-        if (!grouped[order.studentNumber]) grouped[order.studentNumber] = [];
-        grouped[order.studentNumber].push(order);
+        if (!studentGroups[order.studentNumber]) {
+            studentGroups[order.studentNumber] = [];
+        }
+        studentGroups[order.studentNumber].push(order);
     });
-    const studentNumbers = Object.keys(grouped);
-    studentNumbers.forEach((studentNumber, groupIdx) => {
-        const group = grouped[studentNumber];
-        // Collect all items for this student
+
+    // Always group by student number and timestamp
+    let grouped = {};
+    orders.forEach(order => {
+        const key = `${order.studentNumber}_${order.timestamp}`;
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(order);
+    });
+
+    let orderKeys = Object.keys(grouped);
+    // When 'Multiple Orders' is selected, filter to only students with >1 order
+    if (filterOrderCount === 'multiple') {
+        orderKeys = orderKeys.filter(key => {
+            const studentNumber = grouped[key][0].studentNumber;
+            return studentGroups[studentNumber].length > 1;
+        });
+        // Sort so that all orders from the same student are consecutive, newest first within student
+        orderKeys.sort((a, b) => {
+            const aStudent = grouped[a][0].studentNumber;
+            const bStudent = grouped[b][0].studentNumber;
+            if (aStudent === bStudent) {
+                // Sort by timestamp descending within the same student
+                const aDate = new Date(grouped[a][0].timestamp);
+                const bDate = new Date(grouped[b][0].timestamp);
+                return bDate - aDate;
+            }
+            // Otherwise, sort by student number
+            return aStudent.localeCompare(bStudent);
+        });
+    } else {
+        // Default: sort by timestamp (newest first)
+        orderKeys.sort((a, b) => {
+            const aDate = new Date(grouped[a][0].timestamp);
+            const bDate = new Date(grouped[b][0].timestamp);
+            return bDate - aDate;
+        });
+    }
+
+    orderKeys.forEach((key, groupIdx) => {
+        const group = grouped[key];
+        const studentNumber = group[0].studentNumber;
+        // Check if this student has multiple orders
+        const isSameStudent = studentGroups[studentNumber].length > 1;
+        // Filter by single/multiple order filter
+        if (filterOrderCount === 'single' && isSameStudent) return;
+        if (filterOrderCount === 'multiple' && !isSameStudent) return;
+        
+        // Collect all items for this order
         let allItems = [];
         group.forEach(order => {
             const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
@@ -132,9 +180,10 @@ function updateOrdersList() {
                 });
             });
         });
+
         // Filter by search query and filters
         const matchesSearch = (
-            studentNumber.toLowerCase().includes(searchQuery) ||
+            group[0].studentNumber.toLowerCase().includes(searchQuery) ||
             group[0].studentName.toLowerCase().includes(searchQuery) ||
             allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
             group[0].gcashReference?.toLowerCase().includes(searchQuery)
@@ -158,6 +207,7 @@ function updateOrdersList() {
             if (filterStartDate && orderDate < filterStartDate) return;
             if (filterEndDate && orderDate > filterEndDate) return;
         }
+
         // Use the price from the first order as the total (do not multiply by quantity)
         const total = group[0].price;
         // Use the first order for student info
@@ -172,16 +222,23 @@ function updateOrdersList() {
                 displayTimestamp = firstOrder.timestamp;
             }
         }
+
         // Determine group class for coloring
         const groupClass = groupIdx % 2 === 0 ? 'student-group-even' : 'student-group-odd';
+        // Add same-student class if this student has multiple orders
+        const rowClass = `${groupClass}${isSameStudent ? ' same-student' : ''}`;
+
         // Render rows with rowspan for student info and summary columns
         allItems.forEach((item, idx) => {
             const row = document.createElement('tr');
-            row.className = groupClass;
+            row.className = rowClass;
             let cells = '';
             if (idx === 0) {
+                const studentNameDisplay = isSameStudent 
+                    ? `${firstOrder.studentName}<span class="same-student-indicator">(Multiple Orders)</span>`
+                    : firstOrder.studentName;
                 cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
-                cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                cells += `<td rowspan="${allItems.length}">${studentNameDisplay}</td>`;
             }
             cells += `<td>${item.itemName}</td>`;
             cells += `<td>${item.quantity}</td>`;
@@ -192,8 +249,8 @@ function updateOrdersList() {
                 cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                 cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
                 cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                    <button class="btn btn-sm btn-success" onclick="markAllPaid('${studentNumber}')">Mark Paid</button>
-                    <button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${studentNumber}')">Mark Unpaid</button>
+                    <button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Paid</button>
+                    <button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Unpaid</button>
                 </td>`;
             }
             row.innerHTML = cells;
@@ -238,13 +295,20 @@ document.addEventListener('DOMContentLoaded', function() {
             updateOrdersList();
         });
     }
+    const orderCountInput = document.getElementById('filterOrderCount');
+    if (orderCountInput) {
+        orderCountInput.addEventListener('change', function(e) {
+            filterOrderCount = e.target.value;
+            updateOrdersList();
+        });
+    }
     updateOrdersList();
 });
 
-// Mark all orders for a student number as paid
-function markAllPaid(studentNumber) {
+// Mark all orders for a student number and timestamp as paid
+function markAllPaid(studentNumber, timestamp) {
     orders.forEach(order => {
-        if (order.studentNumber === studentNumber) {
+        if (order.studentNumber === studentNumber && order.timestamp === timestamp) {
             order.paymentStatus = 'paid';
         }
     });
@@ -252,10 +316,10 @@ function markAllPaid(studentNumber) {
     updateOrdersList();
 }
 
-// Mark all orders for a student number as unpaid
-function markAllUnpaid(studentNumber) {
+// Mark all orders for a student number and timestamp as unpaid
+function markAllUnpaid(studentNumber, timestamp) {
     orders.forEach(order => {
-        if (order.studentNumber === studentNumber) {
+        if (order.studentNumber === studentNumber && order.timestamp === timestamp) {
             order.paymentStatus = 'unpaid';
         }
     });
