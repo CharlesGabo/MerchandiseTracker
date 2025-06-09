@@ -1,5 +1,7 @@
 // Initialize orders array from localStorage or empty array
 let orders = JSON.parse(localStorage.getItem('orders')) || [];
+let inProcessOrders = JSON.parse(localStorage.getItem('inProcessOrders')) || [];
+let orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
 
 // Google Sheets API configuration
 const SPREADSHEET_ID = '18XYMquFq3MFw-26BvuJJZfFCIF2d0JnTBvA4A7hljlo';
@@ -39,8 +41,17 @@ async function fetchFromGoogleSheets() {
                 };
             });
 
-            // Replace local orders with the new data from Google Sheets
-            orders = newOrders;
+            // Only add orders not in inProcessOrders or orderHistory
+            const inProcessKeys = new Set(inProcessOrders.map(o => `${o.studentNumber}_${o.timestamp}`));
+            const historyKeys = new Set(orderHistory.map(o => `${o.studentNumber}_${o.timestamp}`));
+            const existingKeys = new Set(orders.map(o => `${o.studentNumber}_${o.timestamp}`));
+            const filteredOrders = newOrders.filter(order => {
+                const key = `${order.studentNumber}_${order.timestamp}`;
+                return !inProcessKeys.has(key) && !historyKeys.has(key) && !existingKeys.has(key);
+            });
+
+            // Add only new filtered orders to the current orders array
+            orders = orders.concat(filteredOrders);
             saveOrders();
             updateOrdersList();
             showNotification('Data synchronized successfully!', 'success');
@@ -97,6 +108,8 @@ function addOrder(event) {
 // Save orders to localStorage
 function saveOrders() {
     localStorage.setItem('orders', JSON.stringify(orders));
+    localStorage.setItem('inProcessOrders', JSON.stringify(inProcessOrders));
+    localStorage.setItem('orderHistory', JSON.stringify(orderHistory));
 }
 
 let searchQuery = '';
@@ -105,10 +118,16 @@ let filterEndDate = '';
 let filterPaymentStatus = '';
 let filterPaymentMode = '';
 let filterOrderCount = '';
+let historyFilterStartDate = '';
+let historyFilterEndDate = '';
 
 function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
+    const inProcessList = document.getElementById('inProcessList');
+    const orderHistoryList = document.getElementById('orderHistoryList');
     ordersList.innerHTML = '';
+    inProcessList.innerHTML = '';
+    orderHistoryList.innerHTML = '';
     
     // First, group orders by student number to identify same students
     const studentGroups = {};
@@ -248,13 +267,187 @@ function updateOrdersList() {
                 cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode ? firstOrder.paymentMode : '-'}</td>`;
                 cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                 cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
-                cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                    <button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Paid</button>
-                    <button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Unpaid</button>
-                </td>`;
+                cells += `<td rowspan="${allItems.length}" class="action-buttons">`;
+                if (firstOrder.paymentStatus === 'unpaid') {
+                    cells += `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Paid</button>`;
+                    cells += `<button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
+                        <i class="bi bi-arrow-right-circle"></i> In-Process
+                    </button>`;
+                }
+                if (firstOrder.paymentStatus === 'paid') {
+                    cells += `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Unpaid</button>`;
+                    cells += `<button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <i class="bi bi-arrow-right-circle"></i> In-Process
+                    </button>`;
+                }
+                cells += `</td>`;
             }
             row.innerHTML = cells;
             ordersList.appendChild(row);
+        });
+    });
+
+    // Update In-Process orders list
+    // Group inProcessOrders by student number and timestamp
+    let inProcessGrouped = {};
+    inProcessOrders.forEach(order => {
+        const key = `${order.studentNumber}_${order.timestamp}`;
+        if (!inProcessGrouped[key]) inProcessGrouped[key] = [];
+        inProcessGrouped[key].push(order);
+    });
+    let inProcessKeys = Object.keys(inProcessGrouped);
+    // Sort by timestamp (newest first)
+    inProcessKeys.sort((a, b) => {
+        const aDate = new Date(inProcessGrouped[a][0].timestamp);
+        const bDate = new Date(inProcessGrouped[b][0].timestamp);
+        return bDate - aDate;
+    });
+    inProcessKeys.forEach((key, groupIdx) => {
+        const group = inProcessGrouped[key];
+        // Collect all items for this order
+        let allItems = [];
+        group.forEach(order => {
+            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+            items.forEach(itemStr => {
+                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                allItems.push({
+                    itemName,
+                    quantity,
+                    order
+                });
+            });
+        });
+        // Search filter for in-process
+        const matchesSearch = (
+            group[0].studentNumber.toLowerCase().includes(searchQuery) ||
+            group[0].studentName.toLowerCase().includes(searchQuery) ||
+            allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
+            group[0].gcashReference?.toLowerCase().includes(searchQuery)
+        );
+        if (!matchesSearch && searchQuery) return;
+        const firstOrder = group[0];
+        const total = firstOrder.price;
+        let displayTimestamp = '-';
+        if (firstOrder.timestamp) {
+            if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                const d = new Date(firstOrder.timestamp);
+                displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            } else {
+                displayTimestamp = firstOrder.timestamp;
+            }
+        }
+        allItems.forEach((item, idx) => {
+            const row = document.createElement('tr');
+            let cells = '';
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+            }
+            cells += `<td>${item.itemName}</td>`;
+            cells += `<td>${item.quantity}</td>`;
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                cells += `<td rowspan="${allItems.length}" class="action-buttons">
+                    <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <i class="bi bi-check-circle"></i> Claimed
+                    </button>
+                    <button class="btn btn-sm btn-secondary" onclick="revertToOrders('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <i class="bi bi-arrow-left-circle"></i> Revert
+                    </button>
+                </td>`;
+            }
+            row.innerHTML = cells;
+            inProcessList.appendChild(row);
+        });
+    });
+
+    // Update Order History list
+    // Group orderHistory by student number and timestamp
+    let historyGrouped = {};
+    orderHistory.forEach(order => {
+        const key = `${order.studentNumber}_${order.timestamp}`;
+        if (!historyGrouped[key]) historyGrouped[key] = [];
+        historyGrouped[key].push(order);
+    });
+    let historyKeys = Object.keys(historyGrouped);
+    // Sort by timestamp (newest first)
+    historyKeys.sort((a, b) => {
+        const aDate = new Date(historyGrouped[a][0].timestamp);
+        const bDate = new Date(historyGrouped[b][0].timestamp);
+        return bDate - aDate;
+    });
+    historyKeys.forEach((key, groupIdx) => {
+        const group = historyGrouped[key];
+        const firstOrder = group[0];
+        // Filter by claim date range
+        if (historyFilterStartDate || historyFilterEndDate) {
+            let claimDate = firstOrder.claimDate ? firstOrder.claimDate.split(' ')[0] : '';
+            if (historyFilterStartDate && claimDate < historyFilterStartDate) return;
+            if (historyFilterEndDate && claimDate > historyFilterEndDate) return;
+        }
+        // Collect all items for this order
+        let allItems = [];
+        group.forEach(order => {
+            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+            items.forEach(itemStr => {
+                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                allItems.push({
+                    itemName,
+                    quantity,
+                    order
+                });
+            });
+        });
+        // Search filter for order history
+        const matchesSearch = (
+            group[0].studentNumber.toLowerCase().includes(searchQuery) ||
+            group[0].studentName.toLowerCase().includes(searchQuery) ||
+            allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
+            group[0].gcashReference?.toLowerCase().includes(searchQuery)
+        );
+        if (!matchesSearch && searchQuery) return;
+        const total = firstOrder.price;
+        let displayTimestamp = '-';
+        if (firstOrder.timestamp) {
+            if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                const d = new Date(firstOrder.timestamp);
+                displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+            } else {
+                displayTimestamp = firstOrder.timestamp;
+            }
+        }
+        allItems.forEach((item, idx) => {
+            const row = document.createElement('tr');
+            let cells = '';
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+            }
+            cells += `<td>${item.itemName}</td>`;
+            cells += `<td>${item.quantity}</td>`;
+            if (idx === 0) {
+                cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                cells += `<td rowspan="${allItems.length}">${firstOrder.claimDate || '-'}</td>`;
+                cells += `<td rowspan="${allItems.length}" class="action-buttons">
+                    <button class="btn btn-sm btn-danger" onclick="deleteHistoryOrder('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <i class="bi bi-trash"></i> Delete
+                    </button>
+                </td>`;
+            }
+            row.innerHTML = cells;
+            orderHistoryList.appendChild(row);
         });
     });
 }
@@ -302,6 +495,20 @@ document.addEventListener('DOMContentLoaded', function() {
             updateOrdersList();
         });
     }
+    const historyStartDateInput = document.getElementById('historyStartDate');
+    if (historyStartDateInput) {
+        historyStartDateInput.addEventListener('change', function(e) {
+            historyFilterStartDate = e.target.value;
+            updateOrdersList();
+        });
+    }
+    const historyEndDateInput = document.getElementById('historyEndDate');
+    if (historyEndDateInput) {
+        historyEndDateInput.addEventListener('change', function(e) {
+            historyFilterEndDate = e.target.value;
+            updateOrdersList();
+        });
+    }
     updateOrdersList();
 });
 
@@ -327,6 +534,81 @@ function markAllUnpaid(studentNumber, timestamp) {
     updateOrdersList();
 }
 
+// Mark order as in-process
+function markAsInProcess(studentNumber, timestamp) {
+    const orderToMove = orders.find(order => 
+        order.studentNumber === studentNumber && order.timestamp === timestamp
+    );
+    
+    if (orderToMove) {
+        inProcessOrders.push(orderToMove);
+        orders = orders.filter(order => 
+            !(order.studentNumber === studentNumber && order.timestamp === timestamp)
+        );
+        saveOrders();
+        updateOrdersList();
+        showNotification('Order moved to In-Process', 'success');
+    }
+}
+
+// Mark order as complete
+function markAsComplete(studentNumber, timestamp) {
+    // Prompt for verification
+    const confirmation = prompt("Type 'claimed' to confirm this order is claimed:");
+    if (!confirmation || confirmation.trim().toLowerCase() !== 'claimed') {
+        showNotification("Order not marked as claimed. Please type 'claimed' to confirm.", 'warning');
+        return;
+    }
+    const orderToMove = inProcessOrders.find(order => 
+        order.studentNumber === studentNumber && order.timestamp === timestamp
+    );
+    
+    if (orderToMove) {
+        // Add claim date to the order
+        const now = new Date();
+        orderToMove.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+        
+        // Move to order history instead of back to orders
+        orderHistory.push(orderToMove);
+        inProcessOrders = inProcessOrders.filter(order => 
+            !(order.studentNumber === studentNumber && order.timestamp === timestamp)
+        );
+        saveOrders();
+        updateOrdersList();
+        showNotification('Order marked as claimed and moved to history', 'success');
+    }
+}
+
+// Revert order back to Orders list
+function revertToOrders(studentNumber, timestamp) {
+    const orderToMove = inProcessOrders.find(order => 
+        order.studentNumber === studentNumber && order.timestamp === timestamp
+    );
+    
+    if (orderToMove) {
+        orders.push(orderToMove);
+        inProcessOrders = inProcessOrders.filter(order => 
+            !(order.studentNumber === studentNumber && order.timestamp === timestamp)
+        );
+        saveOrders();
+        updateOrdersList();
+        showNotification('Order reverted back to Orders list', 'info');
+    }
+}
+
+// Delete order from history
+function deleteHistoryOrder(studentNumber, timestamp) {
+    const confirmation = prompt("Type 'delete' to confirm deletion of this order from history:");
+    if (!confirmation || confirmation.trim().toLowerCase() !== 'delete') {
+        showNotification("Order not deleted. Please type 'delete' to confirm.", 'warning');
+        return;
+    }
+    orderHistory = orderHistory.filter(order => !(order.studentNumber === studentNumber && order.timestamp === timestamp));
+    saveOrders();
+    updateOrdersList();
+    showNotification('Order deleted from history.', 'info');
+}
+
 // Initialize the form submission handler
 const orderForm = document.getElementById('orderForm');
 if (orderForm) {
@@ -336,4 +618,107 @@ if (orderForm) {
 const syncButton = document.getElementById('syncButton');
 if (syncButton) {
     syncButton.addEventListener('click', fetchFromGoogleSheets);
+}
+
+// Export Order History to Excel
+function exportOrderHistoryToExcel() {
+    if (!orderHistory.length) {
+        showNotification('No order history to export.', 'warning');
+        return;
+    }
+    // Prepare data for export
+    const exportData = [];
+    // Group orderHistory by student number and timestamp
+    let historyGrouped = {};
+    orderHistory.forEach(order => {
+        const key = `${order.studentNumber}_${order.timestamp}`;
+        if (!historyGrouped[key]) historyGrouped[key] = [];
+        historyGrouped[key].push(order);
+    });
+    let historyKeys = Object.keys(historyGrouped);
+    // Sort by timestamp (newest first)
+    historyKeys.sort((a, b) => {
+        const aDate = new Date(historyGrouped[a][0].timestamp);
+        const bDate = new Date(historyGrouped[b][0].timestamp);
+        return bDate - aDate;
+    });
+    historyKeys.forEach(key => {
+        const group = historyGrouped[key];
+        const firstOrder = group[0];
+        // Collect all items for this order
+        let allItems = [];
+        group.forEach(order => {
+            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+            items.forEach(itemStr => {
+                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                allItems.push({
+                    itemName,
+                    quantity,
+                    order
+                });
+            });
+        });
+        allItems.forEach((item, idx) => {
+            exportData.push({
+                'Student Number': idx === 0 ? firstOrder.studentNumber : '',
+                'Student Name': idx === 0 ? firstOrder.studentName : '',
+                'Item': item.itemName,
+                'Quantity': item.quantity,
+                'Total': idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price}` : '',
+                'GCash Reference Number': idx === 0 ? (firstOrder.gcashReference || '-') : '',
+                'Payment Mode': idx === 0 ? (firstOrder.paymentMode || '-') : '',
+                'Timestamp': idx === 0 ? firstOrder.timestamp : '',
+                'Payment Status': idx === 0 ? firstOrder.paymentStatus : '',
+                'Claim Date': idx === 0 ? (firstOrder.claimDate || '-') : ''
+            });
+        });
+    });
+    // Create worksheet and workbook
+    const ws = XLSX.utils.json_to_sheet(exportData);
+    // Auto-adjust column widths
+    const cols = Object.keys(exportData[0] || {}).map(key => {
+        const maxLen = Math.max(
+            key.length,
+            ...exportData.map(row => String(row[key] ?? '').length)
+        );
+        return { wch: maxLen + 2 };
+    });
+    ws['!cols'] = cols;
+    // Center Quantity, Total, and Payment Status columns
+    const colKeys = Object.keys(exportData[0] || {});
+    const centerCols = ['Quantity', 'Total', 'Payment Status'];
+    for (let R = 1; R <= exportData.length; ++R) { // skip header row
+        centerCols.forEach(colName => {
+            const C = colKeys.indexOf(colName);
+            if (C !== -1) {
+                const cellRef = XLSX.utils.encode_cell({ r: R, c: C });
+                if (ws[cellRef]) {
+                    ws[cellRef].s = ws[cellRef].s || {};
+                    ws[cellRef].s.alignment = { horizontal: 'center' };
+                }
+            }
+        });
+    }
+    // Center header row for those columns
+    centerCols.forEach(colName => {
+        const C = colKeys.indexOf(colName);
+        if (C !== -1) {
+            const cellRef = XLSX.utils.encode_cell({ r: 0, c: C });
+            if (ws[cellRef]) {
+                ws[cellRef].s = ws[cellRef].s || {};
+                ws[cellRef].s.alignment = { horizontal: 'center' };
+            }
+        }
+    });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, 'Order History');
+    // Export to file
+    XLSX.writeFile(wb, 'Order_History.xlsx');
+}
+
+// Attach export button event
+if (document.getElementById('exportHistoryBtn')) {
+    document.getElementById('exportHistoryBtn').addEventListener('click', exportOrderHistoryToExcel);
 } 

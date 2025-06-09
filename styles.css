@@ -58,10 +58,15 @@ body {
     color: #721c24;
 }
 
+.action-buttons {
+    white-space: nowrap;
+}
+
 .action-buttons .btn {
-    padding: 0.25rem 0.5rem;
-    font-size: 0.875rem;
-    margin-bottom: 6px;
+    margin-right: 4px;
+}
+
+.action-buttons .btn:last-child {
     margin-right: 0;
 }
 
@@ -134,4 +139,27 @@ body {
     font-size: 0.8em;
     margin-left: 5px;
     font-style: italic;
+}
+
+/* Remove problematic tbody scroll styles */
+#ordersList {
+    display: table-row-group;
+    max-height: unset;
+    overflow-y: unset;
+}
+#ordersList tr {
+    display: table-row;
+    width: auto;
+    table-layout: auto;
+}
+#ordersList td, #ordersList th {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Add a scrollable wrapper for the table body */
+.orders-table-scroll {
+    max-height: 420px; /* Approx height for 10 rows, adjust as needed */
+    overflow-y: auto;
 } 
