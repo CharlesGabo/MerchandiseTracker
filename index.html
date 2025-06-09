@@ -13,9 +13,20 @@
     <nav class="navbar navbar-expand-lg navbar-dark bg-primary">
         <div class="container">
             <a class="navbar-brand" href="#">Merchandise Tracker</a>
-            <button id="syncButton" class="btn btn-light">
-                <i class="bi bi-arrow-repeat"></i> Sync with Google Sheets
-            </button>
+            <div class="d-flex">
+                <button id="syncButton" class="btn btn-light me-2">
+                    <i class="bi bi-arrow-repeat"></i> Sync with Google Sheets
+                </button>
+                <div class="btn-group" role="group">
+                    <button id="exportAllBtn" class="btn btn-light">
+                        <i class="bi bi-file-earmark-excel"></i> Export All
+                    </button>
+                    <label for="importAllBtn" class="btn btn-light">
+                        <i class="bi bi-file-earmark-arrow-up"></i> Import All
+                    </label>
+                    <input type="file" id="importAllBtn" accept=".xlsx,.xls" style="display: none;">
+                </div>
+            </div>
         </div>
     </nav>
 
@@ -160,7 +171,6 @@
                                 <input type="date" id="historyEndDate" class="form-control" placeholder="End Date">
                             </div>
                         </div>
-                        <button id="exportHistoryBtn" class="btn btn-success mb-3"><i class="bi bi-file-earmark-excel"></i> Export to Excel</button>
                         <div class="table-responsive">
                             <table class="table">
                                 <thead>

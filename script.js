@@ -620,33 +620,62 @@ if (syncButton) {
     syncButton.addEventListener('click', fetchFromGoogleSheets);
 }
 
-// Export Order History to Excel
-function exportOrderHistoryToExcel() {
-    if (!orderHistory.length) {
-        showNotification('No order history to export.', 'warning');
+// Export All Orders to Excel
+function exportAllOrdersToExcel() {
+    if (!inProcessOrders.length && !orderHistory.length) {
+        showNotification('No orders to export.', 'warning');
         return;
     }
-    // Prepare data for export
+
+    // Create workbook with two sheets
+    const wb = XLSX.utils.book_new();
+
+    // Export In-Process Orders
+    if (inProcessOrders.length > 0) {
+        const inProcessData = prepareOrdersForExport(inProcessOrders, false);
+        const wsInProcess = XLSX.utils.json_to_sheet(inProcessData);
+        formatWorksheet(wsInProcess, inProcessData);
+        XLSX.utils.book_append_sheet(wb, wsInProcess, 'In-Process Orders');
+    }
+
+    // Export Order History
+    if (orderHistory.length > 0) {
+        const historyData = prepareOrdersForExport(orderHistory, true);
+        const wsHistory = XLSX.utils.json_to_sheet(historyData);
+        formatWorksheet(wsHistory, historyData);
+        XLSX.utils.book_append_sheet(wb, wsHistory, 'Order History');
+    }
+
+    // Export to file
+    XLSX.writeFile(wb, 'All_Orders.xlsx');
+    showNotification('Successfully exported all orders.', 'success');
+}
+
+// Helper function to prepare orders for export
+function prepareOrdersForExport(orders, isHistory) {
     const exportData = [];
-    // Group orderHistory by student number and timestamp
-    let historyGrouped = {};
-    orderHistory.forEach(order => {
+    let grouped = {};
+    
+    // Group orders by student number and timestamp
+    orders.forEach(order => {
         const key = `${order.studentNumber}_${order.timestamp}`;
-        if (!historyGrouped[key]) historyGrouped[key] = [];
-        historyGrouped[key].push(order);
+        if (!grouped[key]) grouped[key] = [];
+        grouped[key].push(order);
     });
-    let historyKeys = Object.keys(historyGrouped);
+
+    let orderKeys = Object.keys(grouped);
     // Sort by timestamp (newest first)
-    historyKeys.sort((a, b) => {
-        const aDate = new Date(historyGrouped[a][0].timestamp);
-        const bDate = new Date(historyGrouped[b][0].timestamp);
+    orderKeys.sort((a, b) => {
+        const aDate = new Date(grouped[a][0].timestamp);
+        const bDate = new Date(grouped[b][0].timestamp);
         return bDate - aDate;
     });
-    historyKeys.forEach(key => {
-        const group = historyGrouped[key];
+
+    orderKeys.forEach(key => {
+        const group = grouped[key];
         const firstOrder = group[0];
-        // Collect all items for this order
         let allItems = [];
+        
         group.forEach(order => {
             const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
             items.forEach(itemStr => {
@@ -660,8 +689,9 @@ function exportOrderHistoryToExcel() {
                 });
             });
         });
+
         allItems.forEach((item, idx) => {
-            exportData.push({
+            const rowData = {
                 'Student Number': idx === 0 ? firstOrder.studentNumber : '',
                 'Student Name': idx === 0 ? firstOrder.studentName : '',
                 'Item': item.itemName,
@@ -670,26 +700,38 @@ function exportOrderHistoryToExcel() {
                 'GCash Reference Number': idx === 0 ? (firstOrder.gcashReference || '-') : '',
                 'Payment Mode': idx === 0 ? (firstOrder.paymentMode || '-') : '',
                 'Timestamp': idx === 0 ? firstOrder.timestamp : '',
-                'Payment Status': idx === 0 ? firstOrder.paymentStatus : '',
-                'Claim Date': idx === 0 ? (firstOrder.claimDate || '-') : ''
-            });
+                'Payment Status': idx === 0 ? firstOrder.paymentStatus : ''
+            };
+
+            if (isHistory) {
+                rowData['Claim Date'] = idx === 0 ? (firstOrder.claimDate || '-') : '';
+            }
+
+            exportData.push(rowData);
         });
     });
-    // Create worksheet and workbook
-    const ws = XLSX.utils.json_to_sheet(exportData);
+
+    return exportData;
+}
+
+// Helper function to format worksheet
+function formatWorksheet(ws, data) {
     // Auto-adjust column widths
-    const cols = Object.keys(exportData[0] || {}).map(key => {
+    const cols = Object.keys(data[0] || {}).map(key => {
         const maxLen = Math.max(
             key.length,
-            ...exportData.map(row => String(row[key] ?? '').length)
+            ...data.map(row => String(row[key] ?? '').length)
         );
         return { wch: maxLen + 2 };
     });
     ws['!cols'] = cols;
+
     // Center Quantity, Total, and Payment Status columns
-    const colKeys = Object.keys(exportData[0] || {});
+    const colKeys = Object.keys(data[0] || {});
     const centerCols = ['Quantity', 'Total', 'Payment Status'];
-    for (let R = 1; R <= exportData.length; ++R) { // skip header row
+    
+    // Center data cells
+    for (let R = 1; R <= data.length; ++R) {
         centerCols.forEach(colName => {
             const C = colKeys.indexOf(colName);
             if (C !== -1) {
@@ -701,7 +743,8 @@ function exportOrderHistoryToExcel() {
             }
         });
     }
-    // Center header row for those columns
+
+    // Center header row
     centerCols.forEach(colName => {
         const C = colKeys.indexOf(colName);
         if (C !== -1) {
@@ -712,13 +755,112 @@ function exportOrderHistoryToExcel() {
             }
         }
     });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, 'Order History');
-    // Export to file
-    XLSX.writeFile(wb, 'Order_History.xlsx');
 }
 
-// Attach export button event
-if (document.getElementById('exportHistoryBtn')) {
-    document.getElementById('exportHistoryBtn').addEventListener('click', exportOrderHistoryToExcel);
+// Import All Orders from Excel
+function importAllOrdersFromExcel(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = function(e) {
+        try {
+            const data = new Uint8Array(e.target.result);
+            const workbook = XLSX.read(data, { type: 'array' });
+            
+            // Process each sheet
+            workbook.SheetNames.forEach(sheetName => {
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                
+                if (!jsonData.length) {
+                    showNotification(`No data found in sheet: ${sheetName}`, 'warning');
+                    return;
+                }
+
+                // Process the imported data
+                const importedOrders = [];
+                let currentOrder = null;
+
+                jsonData.forEach(row => {
+                    if (row['Student Number']) {
+                        // This is a new order
+                        if (currentOrder) {
+                            importedOrders.push(currentOrder);
+                        }
+                        currentOrder = {
+                            studentNumber: row['Student Number'],
+                            studentName: row['Student Name'],
+                            itemName: row['Item'],
+                            quantity: parseInt(row['Quantity']) || 1,
+                            price: parseFloat(row['Total'].replace('₱', '')) || 0,
+                            gcashReference: row['GCash Reference Number'] === '-' ? '' : row['GCash Reference Number'],
+                            paymentMode: row['Payment Mode'] === '-' ? '' : row['Payment Mode'],
+                            timestamp: row['Timestamp'],
+                            paymentStatus: row['Payment Status'].toLowerCase(),
+                            date: row['Timestamp']
+                        };
+
+                        if (row['Claim Date'] && row['Claim Date'] !== '-') {
+                            currentOrder.claimDate = row['Claim Date'];
+                        }
+                    } else if (currentOrder) {
+                        // This is an additional item for the current order
+                        currentOrder.itemName += ', ' + row['Item'];
+                    }
+                });
+
+                // Add the last order
+                if (currentOrder) {
+                    importedOrders.push(currentOrder);
+                }
+
+                // Update the appropriate array based on sheet name
+                if (sheetName.toLowerCase().includes('history')) {
+                    orderHistory = importedOrders;
+                } else {
+                    inProcessOrders = importedOrders;
+                }
+            });
+
+            // Check for orders that should be in the Orders tab
+            const allOrders = [...inProcessOrders, ...orderHistory];
+            const orderKeys = new Set(orders.map(o => `${o.studentNumber}_${o.timestamp}`));
+            
+            // Filter out orders that are already in inProcessOrders or orderHistory
+            orders = orders.filter(order => {
+                const key = `${order.studentNumber}_${order.timestamp}`;
+                return !allOrders.some(o => `${o.studentNumber}_${o.timestamp}` === key);
+            });
+
+            // Add any orders from inProcessOrders or orderHistory that should be in Orders
+            allOrders.forEach(order => {
+                const key = `${order.studentNumber}_${order.timestamp}`;
+                if (!orderKeys.has(key)) {
+                    // If the order is in inProcessOrders and is unpaid, add it to Orders
+                    if (inProcessOrders.some(o => `${o.studentNumber}_${o.timestamp}` === key) && 
+                        order.paymentStatus === 'unpaid') {
+                        orders.push(order);
+                    }
+                }
+            });
+
+            saveOrders();
+            updateOrdersList();
+            showNotification('Successfully imported all orders and updated Orders tab.', 'success');
+        } catch (error) {
+            console.error('Error importing Excel file:', error);
+            showNotification('Error importing Excel file. Please check the file format.', 'error');
+        }
+    };
+    reader.readAsArrayBuffer(file);
+}
+
+// Attach export/import button events
+if (document.getElementById('exportAllBtn')) {
+    document.getElementById('exportAllBtn').addEventListener('click', exportAllOrdersToExcel);
+}
+
+if (document.getElementById('importAllBtn')) {
+    document.getElementById('importAllBtn').addEventListener('change', importAllOrdersFromExcel);
 } 

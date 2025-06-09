@@ -153,13 +153,14 @@ body {
     table-layout: auto;
 }
 #ordersList td, #ordersList th {
-    white-space: nowrap;
+    /* white-space: nowrap; */
     overflow: hidden;
     text-overflow: ellipsis;
 }
 
 /* Add a scrollable wrapper for the table body */
 .orders-table-scroll {
-    max-height: 420px; /* Approx height for 10 rows, adjust as needed */
+    max-height: 420px;
     overflow-y: auto;
+    overflow-x: hidden;
 } 
