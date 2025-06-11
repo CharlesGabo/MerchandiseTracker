@@ -138,151 +138,189 @@ function updateOrdersList() {
         studentGroups[order.studentNumber].push(order);
     });
 
-    // Always group by student number and timestamp
-    let grouped = {};
+    // Group orders by date
+    const dateGroups = {};
     orders.forEach(order => {
-        const key = `${order.studentNumber}_${order.timestamp}`;
-        if (!grouped[key]) grouped[key] = [];
-        grouped[key].push(order);
+        let orderDate = '';
+        if (order.timestamp) {
+            if (order.timestamp.length > 10 && order.timestamp.includes('T')) {
+                orderDate = order.timestamp.split('T')[0];
+            } else {
+                orderDate = order.timestamp.split(' ')[0];
+            }
+        }
+        if (!dateGroups[orderDate]) {
+            dateGroups[orderDate] = [];
+        }
+        dateGroups[orderDate].push(order);
     });
 
-    let orderKeys = Object.keys(grouped);
-    // When 'Multiple Orders' is selected, filter to only students with >1 order
-    if (filterOrderCount === 'multiple') {
-        orderKeys = orderKeys.filter(key => {
-            const studentNumber = grouped[key][0].studentNumber;
-            return studentGroups[studentNumber].length > 1;
+    // Sort dates in descending order (newest first)
+    const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+        // Parse as date (YYYY-MM-DD or M/D/YYYY)
+        const parseDate = (str) => {
+            if (/^\d{4}-\d{2}-\d{2}$/.test(str)) return new Date(str);
+            if (/^\d{1,2}\/\d{1,2}\/\d{4}$/.test(str)) {
+                const [m, d, y] = str.split('/');
+                return new Date(`${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`);
+            }
+            return new Date(str);
+        };
+        return parseDate(b) - parseDate(a);
+    });
+
+    // Process each date group
+    sortedDates.forEach(date => {
+        const dateOrders = dateGroups[date];
+        
+        // Group orders by student number and timestamp within each date
+        let grouped = {};
+        dateOrders.forEach(order => {
+            const key = `${order.studentNumber}_${order.timestamp}`;
+            if (!grouped[key]) grouped[key] = [];
+            grouped[key].push(order);
         });
-        // Sort so that all orders from the same student are consecutive, newest first within student
-        orderKeys.sort((a, b) => {
-            const aStudent = grouped[a][0].studentNumber;
-            const bStudent = grouped[b][0].studentNumber;
-            if (aStudent === bStudent) {
-                // Sort by timestamp descending within the same student
+
+        let orderKeys = Object.keys(grouped);
+        // When 'Multiple Orders' is selected, filter to only students with >1 order
+        if (filterOrderCount === 'multiple') {
+            orderKeys = orderKeys.filter(key => {
+                const studentNumber = grouped[key][0].studentNumber;
+                return studentGroups[studentNumber].length > 1;
+            });
+            // Sort so that all orders from the same student are consecutive, newest first within student
+            orderKeys.sort((a, b) => {
+                const aStudent = grouped[a][0].studentNumber;
+                const bStudent = grouped[b][0].studentNumber;
+                if (aStudent === bStudent) {
+                    const aDate = new Date(grouped[a][0].timestamp);
+                    const bDate = new Date(grouped[b][0].timestamp);
+                    return bDate - aDate;
+                }
+                return aStudent.localeCompare(bStudent);
+            });
+        } else {
+            // Default: sort by timestamp (newest first)
+            orderKeys.sort((a, b) => {
                 const aDate = new Date(grouped[a][0].timestamp);
                 const bDate = new Date(grouped[b][0].timestamp);
                 return bDate - aDate;
-            }
-            // Otherwise, sort by student number
-            return aStudent.localeCompare(bStudent);
-        });
-    } else {
-        // Default: sort by timestamp (newest first)
-        orderKeys.sort((a, b) => {
-            const aDate = new Date(grouped[a][0].timestamp);
-            const bDate = new Date(grouped[b][0].timestamp);
-            return bDate - aDate;
-        });
-    }
+            });
+        }
 
-    orderKeys.forEach((key, groupIdx) => {
-        const group = grouped[key];
-        const studentNumber = group[0].studentNumber;
-        // Check if this student has multiple orders
-        const isSameStudent = studentGroups[studentNumber].length > 1;
-        // Filter by single/multiple order filter
-        if (filterOrderCount === 'single' && isSameStudent) return;
-        if (filterOrderCount === 'multiple' && !isSameStudent) return;
-        
-        // Collect all items for this order
-        let allItems = [];
-        group.forEach(order => {
-            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
-            items.forEach(itemStr => {
-                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
-                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
-                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
-                allItems.push({
-                    itemName,
-                    quantity,
-                    order
+        // Add date header
+        const dateHeader = document.createElement('tr');
+        dateHeader.className = 'date-header';
+        dateHeader.innerHTML = `<td colspan="10" class="bg-light fw-bold">${date}</td>`;
+        ordersList.appendChild(dateHeader);
+
+        orderKeys.forEach((key, groupIdx) => {
+            const group = grouped[key];
+            const studentNumber = group[0].studentNumber;
+            // Check if this student has multiple orders
+            const isSameStudent = studentGroups[studentNumber].length > 1;
+            // Filter by single/multiple order filter
+            if (filterOrderCount === 'single' && isSameStudent) return;
+            if (filterOrderCount === 'multiple' && !isSameStudent) return;
+            
+            // Collect all items for this order
+            let allItems = [];
+            group.forEach(order => {
+                const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+                items.forEach(itemStr => {
+                    let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                    let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                    let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                    allItems.push({
+                        itemName,
+                        quantity,
+                        order
+                    });
                 });
             });
-        });
 
-        // Filter by search query and filters
-        const matchesSearch = (
-            group[0].studentNumber.toLowerCase().includes(searchQuery) ||
-            group[0].studentName.toLowerCase().includes(searchQuery) ||
-            allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
-            group[0].gcashReference?.toLowerCase().includes(searchQuery)
-        );
-        if (!matchesSearch && searchQuery) return;
-        // Filter by payment status
-        if (filterPaymentStatus && group[0].paymentStatus !== filterPaymentStatus) return;
-        // Filter by payment mode
-        if (filterPaymentMode && group[0].paymentMode.toLowerCase() !== filterPaymentMode.toLowerCase()) return;
-        // Filter by date range
-        if (filterStartDate || filterEndDate) {
-            let orderDate = '';
-            if (group[0].timestamp && group[0].timestamp.length > 0) {
-                // Try to parse as ISO or YYYY-MM-DD
-                if (group[0].timestamp.length > 10 && group[0].timestamp.includes('T')) {
-                    orderDate = group[0].timestamp.split('T')[0];
+            // Filter by search query and filters
+            const matchesSearch = (
+                group[0].studentNumber.toLowerCase().includes(searchQuery) ||
+                group[0].studentName.toLowerCase().includes(searchQuery) ||
+                allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
+                group[0].gcashReference?.toLowerCase().includes(searchQuery)
+            );
+            if (!matchesSearch && searchQuery) return;
+            // Filter by payment status
+            if (filterPaymentStatus && group[0].paymentStatus !== filterPaymentStatus) return;
+            // Filter by payment mode
+            if (filterPaymentMode && group[0].paymentMode.toLowerCase() !== filterPaymentMode.toLowerCase()) return;
+            // Filter by date range
+            if (filterStartDate || filterEndDate) {
+                let orderDate = '';
+                if (group[0].timestamp && group[0].timestamp.length > 0) {
+                    if (group[0].timestamp.length > 10 && group[0].timestamp.includes('T')) {
+                        orderDate = group[0].timestamp.split('T')[0];
+                    } else {
+                        orderDate = group[0].timestamp.split(' ')[0];
+                    }
+                }
+                if (filterStartDate && orderDate < filterStartDate) return;
+                if (filterEndDate && orderDate > filterEndDate) return;
+            }
+
+            // Use the price from the first order as the total
+            const total = group[0].price;
+            // Use the first order for student info
+            const firstOrder = group[0];
+            // Format timestamp for display
+            let displayTimestamp = '-';
+            if (firstOrder.timestamp) {
+                if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                    const d = new Date(firstOrder.timestamp);
+                    displayTimestamp = `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
                 } else {
-                    orderDate = group[0].timestamp.split(' ')[0];
+                    displayTimestamp = firstOrder.timestamp.split(' ')[1] || firstOrder.timestamp;
                 }
             }
-            if (filterStartDate && orderDate < filterStartDate) return;
-            if (filterEndDate && orderDate > filterEndDate) return;
-        }
 
-        // Use the price from the first order as the total (do not multiply by quantity)
-        const total = group[0].price;
-        // Use the first order for student info
-        const firstOrder = group[0];
-        // Format timestamp for display
-        let displayTimestamp = '-';
-        if (firstOrder.timestamp) {
-            if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
-                const d = new Date(firstOrder.timestamp);
-                displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-            } else {
-                displayTimestamp = firstOrder.timestamp;
-            }
-        }
+            // Determine group class for coloring
+            const groupClass = groupIdx % 2 === 0 ? 'student-group-even' : 'student-group-odd';
+            // Add same-student class if this student has multiple orders
+            const rowClass = `${groupClass}${isSameStudent ? ' same-student' : ''}`;
 
-        // Determine group class for coloring
-        const groupClass = groupIdx % 2 === 0 ? 'student-group-even' : 'student-group-odd';
-        // Add same-student class if this student has multiple orders
-        const rowClass = `${groupClass}${isSameStudent ? ' same-student' : ''}`;
-
-        // Render rows with rowspan for student info and summary columns
-        allItems.forEach((item, idx) => {
+            // Create the row
             const row = document.createElement('tr');
             row.className = rowClass;
-            let cells = '';
-            if (idx === 0) {
-                const studentNameDisplay = isSameStudent 
-                    ? `${firstOrder.studentName}<span class="same-student-indicator">(Multiple Orders)</span>`
-                    : firstOrder.studentName;
-                cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
-                cells += `<td rowspan="${allItems.length}">${studentNameDisplay}</td>`;
-            }
-            cells += `<td>${item.itemName}</td>`;
-            cells += `<td>${item.quantity}</td>`;
-            if (idx === 0) {
-                cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
-                cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference ? firstOrder.gcashReference : '-'}</td>`;
-                cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode ? firstOrder.paymentMode : '-'}</td>`;
-                cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
-                cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
-                cells += `<td rowspan="${allItems.length}" class="action-buttons">`;
-                if (firstOrder.paymentStatus === 'unpaid') {
-                    cells += `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Paid</button>`;
-                    cells += `<button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
-                        <i class="bi bi-arrow-right-circle"></i> In-Process
-                    </button>`;
-                }
-                if (firstOrder.paymentStatus === 'paid') {
-                    cells += `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">Mark Unpaid</button>`;
-                    cells += `<button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                        <i class="bi bi-arrow-right-circle"></i> In-Process
-                    </button>`;
-                }
-                cells += `</td>`;
-            }
-            row.innerHTML = cells;
+            row.innerHTML = `
+                <td>${firstOrder.studentNumber}</td>
+                <td>${firstOrder.studentName}</td>
+                <td>${allItems.map(item => `${item.itemName} (${item.quantity}x)`).join('<br>')}</td>
+                <td>${allItems.reduce((sum, item) => sum + item.quantity, 0)}</td>
+                <td>${formatCurrency(total)}</td>
+                <td>${firstOrder.gcashReference || '-'}</td>
+                <td>${firstOrder.paymentMode}</td>
+                <td>${displayTimestamp}</td>
+                <td>
+                    <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : 'bg-warning'}">
+                        ${firstOrder.paymentStatus}
+                    </span>
+                </td>
+                <td>
+                    <div class="btn-group">
+                        ${firstOrder.paymentStatus === 'unpaid' ? 
+                            `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                <i class="bi bi-check-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
+                                <i class="bi bi-arrow-right-circle"></i>
+                            </button>` :
+                            `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                <i class="bi bi-x-circle"></i>
+                            </button>
+                            <button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                <i class="bi bi-arrow-right-circle"></i>
+                            </button>`
+                        }
+                    </div>
+                </td>
+            `;
             ordersList.appendChild(row);
         });
     });
