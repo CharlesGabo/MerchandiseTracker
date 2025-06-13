@@ -8,6 +8,11 @@ const SPREADSHEET_ID = '18XYMquFq3MFw-26BvuJJZfFCIF2d0JnTBvA4A7hljlo';
 const SHEET_NAME = 'Orders'; // or your actual sheet name/tab
 const API_KEY = 'AIzaSyB9H0fzESWhk1KaI9bMbce-CzNTgmGjRTU';
 
+// Add event listener for page load
+document.addEventListener('DOMContentLoaded', () => {
+    fetchFromGoogleSheets();
+});
+
 // Format currency
 function formatCurrency(amount) {
     return new Intl.NumberFormat('en-PH', {
