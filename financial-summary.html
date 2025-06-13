@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Financial Summary</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.css" rel="stylesheet">
+    <link href="styles.css" rel="stylesheet">
+</head>
+<body>
+    <div class="container mt-4">
+        <h1 class="mb-4">Financial Summary</h1>
+        
+        <!-- Summary Cards -->
+        <div class="row mb-4">
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Revenue</h5>
+                        <h3 id="totalRevenue" class="text-success">₱0.00</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Paid Orders</h5>
+                        <h3 id="paidOrders" class="text-primary">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Unpaid Orders</h5>
+                        <h3 id="unpaidOrders" class="text-warning">0</h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">In Process</h5>
+                        <h3 id="inProcessOrders" class="text-info">0</h3>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Charts Row -->
+        <div class="row mb-4">
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Revenue by Payment Status</h5>
+                        <canvas id="paymentStatusChart"></canvas>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Revenue by Payment Mode</h5>
+                        <canvas id="paymentModeChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Date Range Filter -->
+        <div class="row mb-4">
+            <div class="col-md-12">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Date Range Filter</h5>
+                        <div class="row">
+                            <div class="col-md-4">
+                                <label for="startDate" class="form-label">Start Date</label>
+                                <input type="date" class="form-control" id="startDate">
+                            </div>
+                            <div class="col-md-4">
+                                <label for="endDate" class="form-label">End Date</label>
+                                <input type="date" class="form-control" id="endDate">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">&nbsp;</label>
+                                <button class="btn btn-primary w-100" onclick="updateFinancialSummary()">Apply Filter</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Detailed Summary Table -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Detailed Summary</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Date</th>
+                                <th>Total Orders</th>
+                                <th>Paid Orders</th>
+                                <th>Unpaid Orders</th>
+                                <th>In Process</th>
+                                <th>Total Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="summaryTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+        <!-- Item Filter Dropdown -->
+        <div class="mb-2">
+            <label for="itemFilter" class="form-label fw-bold">Filter by Item:</label>
+            <select id="itemFilter" class="form-select" style="max-width: 300px; display: inline-block;">
+                <option value="all">All Items</option>
+            </select>
+        </div>
+
+        <!-- Size Filter Dropdown (hidden by default) -->
+        <div class="mb-2" id="sizeFilterWrapper" style="display:none;">
+            <label id="sizeFilterLabel" for="sizeFilter" class="form-label fw-bold">Filter by Size:</label>
+            <select id="sizeFilter" class="form-select" style="max-width: 200px; display: inline-block;">
+                <option value="all">All Sizes</option>
+            </select>
+        </div>
+
+        <!-- Item Summary Table -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <h5 class="card-title">Item Summary</h5>
+                <div class="table-responsive">
+                    <table class="table table-striped">
+                        <thead>
+                            <tr>
+                                <th>Item Name</th>
+                                <th>Total Quantity Sold</th>
+                                <th>Total Revenue</th>
+                                <th>Paid Quantity</th>
+                                <th>Unpaid Quantity</th>
+                                <th>In Process Quantity</th>
+                                <th>Average Price</th>
+                                <th>% of Total Revenue</th>
+                            </tr>
+                        </thead>
+                        <tbody id="itemSummaryTableBody">
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <script src="script.js"></script>
+    <script>
+        // Initialize charts
+        let paymentStatusChart;
+        let paymentModeChart;
+
+        function initializeCharts() {
+            const paymentStatusCtx = document.getElementById('paymentStatusChart').getContext('2d');
+            const paymentModeCtx = document.getElementById('paymentModeChart').getContext('2d');
+
+            paymentStatusChart = new Chart(paymentStatusCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['Paid', 'Unpaid', 'In Process'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#28a745', '#ffc107', '#17a2b8']
+                    }]
+                }
+            });
+
+            paymentModeChart = new Chart(paymentModeCtx, {
+                type: 'pie',
+                data: {
+                    labels: ['GCash', 'Cash', 'Other'],
+                    datasets: [{
+                        data: [0, 0, 0],
+                        backgroundColor: ['#007bff', '#28a745', '#6c757d']
+                    }]
+                }
+            });
+        }
+
+        // Helper to extract base item name (ignores size in parentheses, keeps version)
+        function getBaseItemName(itemName) {
+            return itemName.replace(/\s*\([^)]*\)/g, '').trim();
+        }
+
+        // Store all item summary data globally for filtering
+        let globalItemSummary = {};
+        let globalAllOrders = [];
+
+        function populateItemFilterDropdown(itemSummary) {
+            const filter = document.getElementById('itemFilter');
+            const baseNames = Array.from(new Set(Object.keys(itemSummary).map(getBaseItemName)));
+            filter.innerHTML = '<option value="all">All Items</option>' +
+                baseNames.map(name => `<option value="${name}">${name}</option>`).join('');
+        }
+
+        function getSizeFromItemName(itemName) {
+            // Extracts size from e.g. 'V1.1 T-Shirt (S)' or 'V1.1 T-Shirt (3XL)'
+            const match = itemName.match(/\(([^)]+)\)/);
+            if (match) {
+                const size = match[1].replace(/Size:\s*/i, '').trim();
+                // Only return if it's a likely size (S, M, L, XL, 3XL, etc.)
+                if (/^(S|M|L|XL|2XL|3XL|4XL|5XL)$/i.test(size)) return size.toUpperCase();
+            }
+            return null;
+        }
+
+        function populateSizeFilterDropdown(itemSummary, baseName) {
+            const filter = document.getElementById('sizeFilter');
+            // Save the current selection
+            const prevValue = filter.value;
+            const sizeSet = new Set();
+            Object.keys(itemSummary).forEach(itemName => {
+                if (getBaseItemName(itemName) === baseName) {
+                    const size = getSizeFromItemName(itemName);
+                    if (size) sizeSet.add(size);
+                }
+            });
+            // Sort sizes by defined order
+            const sortedSizes = Array.from(sizeSet).sort((a, b) => getSizeOrderIndex(a) - getSizeOrderIndex(b));
+            filter.innerHTML = '<option value="all">All Sizes</option>' +
+                sortedSizes.map(size => `<option value="${size}">${size}</option>`).join('');
+            // Restore the previous selection if possible
+            if ([...filter.options].some(opt => opt.value === prevValue)) {
+                filter.value = prevValue;
+            } else {
+                filter.value = 'all';
+            }
+        }
+
+        function buildItemSummary(allOrders) {
+            const itemSummary = {};
+            allOrders.forEach(order => {
+                let items = order.itemName.split(/\n|,/).map(item => item.trim()).filter(Boolean);
+                items.forEach(itemLine => {
+                    let match = itemLine.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                    let itemName = match ? match[1].trim() : itemLine;
+                    let quantity = match && match[2] ? parseInt(match[2]) : 1;
+                    if (!itemSummary[itemName]) {
+                        itemSummary[itemName] = {
+                            totalQuantity: 0,
+                            totalRevenue: 0,
+                            paidQuantity: 0,
+                            unpaidQuantity: 0,
+                            inProcessQuantity: 0,
+                            averagePrice: 0,
+                            totalOrders: 0
+                        };
+                    }
+                    itemSummary[itemName].totalQuantity += quantity;
+                    itemSummary[itemName].totalOrders += 1;
+                    if (order.paymentStatus === 'paid') {
+                        itemSummary[itemName].paidQuantity += quantity;
+                        itemSummary[itemName].totalRevenue += order.price * quantity;
+                    } else if (order.paymentStatus === 'unpaid') {
+                        itemSummary[itemName].unpaidQuantity += quantity;
+                    } else {
+                        itemSummary[itemName].inProcessQuantity += quantity;
+                    }
+                });
+            });
+            // Calculate average price and percentage of total revenue
+            const totalRevenue = Object.values(itemSummary).reduce((sum, item) => sum + item.totalRevenue, 0);
+            Object.values(itemSummary).forEach(item => {
+                item.averagePrice = item.totalRevenue / item.paidQuantity || 0;
+                item.percentageOfRevenue = (item.totalRevenue / totalRevenue * 100) || 0;
+            });
+            return itemSummary;
+        }
+
+        // Size order for sorting
+        const SIZE_ORDER = ['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'];
+
+        function getSizeOrderIndex(size) {
+            const idx = SIZE_ORDER.indexOf(size);
+            return idx === -1 ? SIZE_ORDER.length : idx;
+        }
+
+        function getItemDate(itemName) {
+            // Find the most recent order date for this item
+            let latestDate = null;
+            globalAllOrders.forEach(order => {
+                let items = order.itemName.split(/\n|,/).map(item => item.trim()).filter(Boolean);
+                items.forEach(itemLine => {
+                    let match = itemLine.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                    let name = match ? match[1].trim() : itemLine;
+                    if (name === itemName) {
+                        const d = new Date(order.date);
+                        if (!latestDate || d > latestDate) latestDate = d;
+                    }
+                });
+            });
+            return latestDate ? latestDate.getTime() : 0;
+        }
+
+        function updateItemSummaryTable() {
+            const tableBody = document.getElementById('itemSummaryTableBody');
+            tableBody.innerHTML = '';
+            const filterValue = document.getElementById('itemFilter').value;
+            const sizeFilterValue = document.getElementById('sizeFilter') ? document.getElementById('sizeFilter').value : 'all';
+            const sizeFilterWrapper = document.getElementById('sizeFilterWrapper');
+            if (/T-Shirt/i.test(filterValue) && filterValue !== 'all') {
+                sizeFilterWrapper.style.display = '';
+                populateSizeFilterDropdown(globalItemSummary, filterValue);
+            } else {
+                sizeFilterWrapper.style.display = 'none';
+            }
+            // Filter items by base name
+            let filteredItems = Object.entries(globalItemSummary)
+                .filter(([itemName]) => filterValue === 'all' || getBaseItemName(itemName) === filterValue);
+            // If T-Shirt and All Sizes, group by size and sort by size order, then by date (newest first)
+            if (/T-Shirt/i.test(filterValue) && sizeFilterValue === 'all') {
+                // Group items by size
+                const sizeGroups = {};
+                filteredItems.forEach(([itemName, summary]) => {
+                    const size = getSizeFromItemName(itemName) || 'Other';
+                    if (!sizeGroups[size]) sizeGroups[size] = [];
+                    sizeGroups[size].push([itemName, summary]);
+                });
+                // Sort sizes by defined order
+                const sortedSizes = Object.keys(sizeGroups).sort((a, b) => getSizeOrderIndex(a) - getSizeOrderIndex(b));
+                sortedSizes.forEach(size => {
+                    // Add size sub-header
+                    const sizeRow = document.createElement('tr');
+                    sizeRow.style.background = '#f5f5f5';
+                    sizeRow.innerHTML = `<td colspan="8"><b>Size: ${size}</b></td>`;
+                    tableBody.appendChild(sizeRow);
+                    // Sort items in this size group by most recent order date (newest first)
+                    sizeGroups[size].sort((a, b) => getItemDate(b[0]) - getItemDate(a[0]));
+                    sizeGroups[size].forEach(([itemName, summary]) => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `
+                            <td>${itemName}</td>
+                            <td>${summary.totalQuantity}</td>
+                            <td>${formatCurrency(summary.totalRevenue)}</td>
+                            <td>${summary.paidQuantity}</td>
+                            <td>${summary.unpaidQuantity}</td>
+                            <td>${summary.inProcessQuantity}</td>
+                            <td>${formatCurrency(summary.averagePrice)}</td>
+                            <td>${summary.percentageOfRevenue.toFixed(1)}%</td>
+                        `;
+                        tableBody.appendChild(row);
+                    });
+                });
+            } else {
+                // If a specific size is selected, or not a T-Shirt, sort by size order if T-Shirt, else by revenue
+                filteredItems = filteredItems
+                    .filter(([itemName]) => {
+                        if (sizeFilterWrapper.style.display === 'none' || sizeFilterValue === 'all') return true;
+                        const size = getSizeFromItemName(itemName);
+                        return size === sizeFilterValue;
+                    })
+                    .sort((a, b) => {
+                        if (/T-Shirt/i.test(filterValue)) {
+                            // Sort by size order
+                            const sizeA = getSizeFromItemName(a[0]) || 'Other';
+                            const sizeB = getSizeFromItemName(b[0]) || 'Other';
+                            return getSizeOrderIndex(sizeA) - getSizeOrderIndex(sizeB);
+                        }
+                        // Otherwise, sort by revenue
+                        return b[1].totalRevenue - a[1].totalRevenue;
+                    });
+                filteredItems.forEach(([itemName, summary]) => {
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${itemName}</td>
+                        <td>${summary.totalQuantity}</td>
+                        <td>${formatCurrency(summary.totalRevenue)}</td>
+                        <td>${summary.paidQuantity}</td>
+                        <td>${summary.unpaidQuantity}</td>
+                        <td>${summary.inProcessQuantity}</td>
+                        <td>${formatCurrency(summary.averagePrice)}</td>
+                        <td>${summary.percentageOfRevenue.toFixed(1)}%</td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+            }
+        }
+
+        function updateFinancialSummary() {
+            const startDate = document.getElementById('startDate').value;
+            const endDate = document.getElementById('endDate').value;
+            let filteredOrders = orders;
+            let filteredInProcess = inProcessOrders;
+            let filteredHistory = orderHistory;
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                filteredOrders = orders.filter(order => {
+                    const orderDate = new Date(order.date);
+                    return orderDate >= start && orderDate <= end;
+                });
+                filteredInProcess = inProcessOrders.filter(order => {
+                    const orderDate = new Date(order.date);
+                    return orderDate >= start && orderDate <= end;
+                });
+                filteredHistory = orderHistory.filter(order => {
+                    const orderDate = new Date(order.date);
+                    return orderDate >= start && orderDate <= end;
+                });
+            }
+            const totalRevenue = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+                .filter(order => order.paymentStatus === 'paid')
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const paidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+                .filter(order => order.paymentStatus === 'paid').length;
+            const unpaidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+                .filter(order => order.paymentStatus === 'unpaid').length;
+            const inProcessCount = filteredInProcess.length;
+            document.getElementById('totalRevenue').textContent = formatCurrency(totalRevenue);
+            document.getElementById('paidOrders').textContent = paidOrders;
+            document.getElementById('unpaidOrders').textContent = unpaidOrders;
+            document.getElementById('inProcessOrders').textContent = inProcessCount;
+            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory];
+            // Payment Status Chart
+            const paidAmount = allOrders
+                .filter(order => order.paymentStatus === 'paid')
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const unpaidAmount = allOrders
+                .filter(order => order.paymentStatus === 'unpaid')
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const inProcessAmount = filteredInProcess
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            paymentStatusChart.data.datasets[0].data = [paidAmount, unpaidAmount, inProcessAmount];
+            paymentStatusChart.update();
+            // Payment Mode Chart
+            const gcashAmount = allOrders
+                .filter(order => order.paymentMode.toLowerCase().includes('gcash'))
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const cashAmount = allOrders
+                .filter(order => order.paymentMode.toLowerCase().includes('cash'))
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const otherAmount = allOrders
+                .filter(order => !order.paymentMode.toLowerCase().includes('gcash') && 
+                               !order.paymentMode.toLowerCase().includes('cash'))
+                .reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            paymentModeChart.data.datasets[0].data = [gcashAmount, cashAmount, otherAmount];
+            paymentModeChart.update();
+            updateSummaryTable(allOrders);
+            // Build and store item summary globally, then update table
+            globalAllOrders = allOrders;
+            globalItemSummary = buildItemSummary(allOrders);
+            updateItemSummaryTable();
+        }
+
+        function updateSummaryTable(allOrders) {
+            const tableBody = document.getElementById('summaryTableBody');
+            tableBody.innerHTML = '';
+
+            // Group orders by date
+            const ordersByDate = {};
+            allOrders.forEach(order => {
+                const date = order.date.split('T')[0];
+                if (!ordersByDate[date]) {
+                    ordersByDate[date] = {
+                        totalOrders: 0,
+                        paidOrders: 0,
+                        unpaidOrders: 0,
+                        inProcess: 0,
+                        totalRevenue: 0
+                    };
+                }
+
+                ordersByDate[date].totalOrders++;
+                if (order.paymentStatus === 'paid') {
+                    ordersByDate[date].paidOrders++;
+                    ordersByDate[date].totalRevenue += order.price * order.quantity;
+                } else if (order.paymentStatus === 'unpaid') {
+                    ordersByDate[date].unpaidOrders++;
+                } else {
+                    ordersByDate[date].inProcess++;
+                }
+            });
+
+            // Sort dates in descending order
+            const sortedDates = Object.keys(ordersByDate).sort((a, b) => new Date(b) - new Date(a));
+
+            sortedDates.forEach(date => {
+                const summary = ordersByDate[date];
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${date}</td>
+                    <td>${summary.totalOrders}</td>
+                    <td>${summary.paidOrders}</td>
+                    <td>${summary.unpaidOrders}</td>
+                    <td>${summary.inProcess}</td>
+                    <td>${formatCurrency(summary.totalRevenue)}</td>
+                `;
+                tableBody.appendChild(row);
+            });
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            initializeCharts();
+            updateFinancialSummary();
+            // Populate filter dropdown once on page load
+            globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory]);
+            populateItemFilterDropdown(globalItemSummary);
+            document.getElementById('itemFilter').addEventListener('change', () => {
+                updateItemSummaryTable();
+            });
+            document.getElementById('sizeFilter').addEventListener('change', () => {
+                updateItemSummaryTable();
+            });
+        });
+
+        // Real-time sync: update summary if localStorage changes (e.g., from index.html)
+        window.addEventListener('storage', function(e) {
+            if (["orders", "inProcessOrders", "orderHistory"].includes(e.key)) {
+                // Reload the latest data from localStorage
+                orders = JSON.parse(localStorage.getItem('orders')) || [];
+                inProcessOrders = JSON.parse(localStorage.getItem('inProcessOrders')) || [];
+                orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
+                updateFinancialSummary();
+            }
+        });
+    </script>
+</body>
+</html>
