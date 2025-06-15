@@ -7,6 +7,12 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.css" rel="stylesheet">
     <link href="styles.css" rel="stylesheet">
+    <style>
+        .clickable-row { cursor: pointer; transition: background 0.2s; }
+        .clickable-row:hover { background: #f0f0f0; }
+        .chevron { display: inline-block; transition: transform 0.2s; margin-right: 8px; }
+        .chevron.rotate { transform: rotate(90deg); }
+    </style>
 </head>
 <body>
     <div class="container mt-4">
@@ -98,67 +104,11 @@
             </div>
         </div>
 
-        <!-- Detailed Summary Table -->
+        <!-- Monthly/Weekly/Item Breakdown Section -->
         <div class="card mb-4">
             <div class="card-body">
-                <h5 class="card-title">Detailed Summary</h5>
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Date</th>
-                                <th>Total Orders</th>
-                                <th>Paid Orders</th>
-                                <th>Unpaid Orders</th>
-                                <th>In Process</th>
-                                <th>Total Revenue</th>
-                            </tr>
-                        </thead>
-                        <tbody id="summaryTableBody">
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-
-        <!-- Item Filter Dropdown -->
-        <div class="mb-2">
-            <label for="itemFilter" class="form-label fw-bold">Filter by Item:</label>
-            <select id="itemFilter" class="form-select" style="max-width: 300px; display: inline-block;">
-                <option value="all">All Items</option>
-            </select>
-        </div>
-
-        <!-- Size Filter Dropdown (hidden by default) -->
-        <div class="mb-2" id="sizeFilterWrapper" style="display:none;">
-            <label id="sizeFilterLabel" for="sizeFilter" class="form-label fw-bold">Filter by Size:</label>
-            <select id="sizeFilter" class="form-select" style="max-width: 200px; display: inline-block;">
-                <option value="all">All Sizes</option>
-            </select>
-        </div>
-
-        <!-- Item Summary Table -->
-        <div class="card mb-4">
-            <div class="card-body">
-                <h5 class="card-title">Item Summary</h5>
-                <div class="table-responsive">
-                    <table class="table table-striped">
-                        <thead>
-                            <tr>
-                                <th>Item Name</th>
-                                <th>Total Quantity Sold</th>
-                                <th>Total Revenue</th>
-                                <th>Paid Quantity</th>
-                                <th>Unpaid Quantity</th>
-                                <th>In Process Quantity</th>
-                                <th>Average Price</th>
-                                <th>% of Total Revenue</th>
-                            </tr>
-                        </thead>
-                        <tbody id="itemSummaryTableBody">
-                        </tbody>
-                    </table>
-                </div>
+                <h5 class="card-title">Monthly Breakdown</h5>
+                <div id="mtMonthlyBreakdown"></div>
             </div>
         </div>
     </div>
@@ -198,21 +148,15 @@
             });
         }
 
-        // Helper to extract base item name (ignores size in parentheses, keeps version)
+        // Helper to extract base item name (ignores size and quantity)
         function getBaseItemName(itemName) {
-            return itemName.replace(/\s*\([^)]*\)/g, '').trim();
+            // Remove anything in parentheses (size/qty) and trailing spaces/commas
+            return itemName.replace(/\s*\([^)]*\)/g, '').replace(/,?\s*$/, '').trim();
         }
 
         // Store all item summary data globally for filtering
         let globalItemSummary = {};
         let globalAllOrders = [];
-
-        function populateItemFilterDropdown(itemSummary) {
-            const filter = document.getElementById('itemFilter');
-            const baseNames = Array.from(new Set(Object.keys(itemSummary).map(getBaseItemName)));
-            filter.innerHTML = '<option value="all">All Items</option>' +
-                baseNames.map(name => `<option value="${name}">${name}</option>`).join('');
-        }
 
         function getSizeFromItemName(itemName) {
             // Extracts size from e.g. 'V1.1 T-Shirt (S)' or 'V1.1 T-Shirt (3XL)'
@@ -223,29 +167,6 @@
                 if (/^(S|M|L|XL|2XL|3XL|4XL|5XL)$/i.test(size)) return size.toUpperCase();
             }
             return null;
-        }
-
-        function populateSizeFilterDropdown(itemSummary, baseName) {
-            const filter = document.getElementById('sizeFilter');
-            // Save the current selection
-            const prevValue = filter.value;
-            const sizeSet = new Set();
-            Object.keys(itemSummary).forEach(itemName => {
-                if (getBaseItemName(itemName) === baseName) {
-                    const size = getSizeFromItemName(itemName);
-                    if (size) sizeSet.add(size);
-                }
-            });
-            // Sort sizes by defined order
-            const sortedSizes = Array.from(sizeSet).sort((a, b) => getSizeOrderIndex(a) - getSizeOrderIndex(b));
-            filter.innerHTML = '<option value="all">All Sizes</option>' +
-                sortedSizes.map(size => `<option value="${size}">${size}</option>`).join('');
-            // Restore the previous selection if possible
-            if ([...filter.options].some(opt => opt.value === prevValue)) {
-                filter.value = prevValue;
-            } else {
-                filter.value = 'all';
-            }
         }
 
         function buildItemSummary(allOrders) {
@@ -457,11 +378,12 @@
                 .reduce((sum, order) => sum + (order.price * order.quantity), 0);
             paymentModeChart.data.datasets[0].data = [gcashAmount, cashAmount, otherAmount];
             paymentModeChart.update();
-            updateSummaryTable(allOrders);
             // Build and store item summary globally, then update table
             globalAllOrders = allOrders;
             globalItemSummary = buildItemSummary(allOrders);
-            updateItemSummaryTable();
+            // updateItemSummaryTable();
+            // Add this line to render the new breakdown
+            renderMonthlyBreakdown(allOrders);
         }
 
         function updateSummaryTable(allOrders) {
@@ -511,17 +433,218 @@
             });
         }
 
+        // Helper to get ordinal suffix
+        function ordinal(n) {
+            if (n > 3 && n < 21) return n + 'th';
+            switch (n % 10) {
+                case 1: return n + 'st';
+                case 2: return n + 'nd';
+                case 3: return n + 'rd';
+                default: return n + 'th';
+            }
+        }
+
+        // New: Render Monthly/Weekly/Item/Transaction breakdown
+        function renderMonthlyBreakdown(allOrders) {
+            const container = document.getElementById('mtMonthlyBreakdown');
+            if (!container) return;
+            container.innerHTML = '';
+            if (!allOrders || allOrders.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted">No data available.</div>';
+                return;
+            }
+            // Group by month
+            const months = {};
+            allOrders.forEach(order => {
+                const d = new Date(order.date);
+                const monthKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+                if (!months[monthKey]) months[monthKey] = [];
+                months[monthKey].push(order);
+            });
+            // Sort months descending
+            const sortedMonths = Object.keys(months).sort((a, b) => b.localeCompare(a));
+            sortedMonths.forEach(monthKey => {
+                const monthOrders = months[monthKey];
+                // Calculate summary for the month
+                let profit = 0, unpaid = 0, count = 0, paid = 0, unpaidCount = 0;
+                monthOrders.forEach(o => {
+                    if (o.paymentStatus === 'paid') { profit += o.price * o.quantity; paid++; }
+                    else if (o.paymentStatus === 'unpaid') { unpaid += o.price * o.quantity; unpaidCount++; }
+                    count++;
+                });
+                // Month row
+                const monthChevronId = `chevron-month-${monthKey}`;
+                const monthDiv = document.createElement('div');
+                monthDiv.className = 'mb-3 clickable-row';
+                monthDiv.innerHTML = `
+                    <div class="d-flex justify-content-between align-items-center bg-light p-2 border" onclick="toggleDetails('month-details-${monthKey}', this)">
+                        <div><span id="${monthChevronId}" class="chevron">&#9654;</span><b>${monthKey}</b></div>
+                        <div>
+                            <span class="me-3">Total Profit: <b>${formatCurrency(profit)}</b></span>
+                            <span class="me-3">Total Unpaid: <b>${formatCurrency(unpaid)}</b></span>
+                            <span class="me-3">Transactions: <b>${count}</b></span>
+                            <span class="me-3">Paid: <b>${paid}</b></span>
+                            <span class="me-3">Unpaid: <b>${unpaidCount}</b></span>
+                        </div>
+                    </div>
+                    <div style="display:none;" class="mt-2 details" id="month-details-${monthKey}"></div>
+                `;
+                // Fill in the details div (the second child)
+                const detailsDiv = monthDiv.children[1];
+                // Group by week
+                const weeks = {};
+                monthOrders.forEach(order => {
+                    const d = new Date(order.date);
+                    // Week of month (1-based)
+                    const week = Math.ceil((d.getDate() + new Date(d.getFullYear(), d.getMonth(), 1).getDay()) / 7);
+                    const weekKey = `${monthKey}-W${week}`;
+                    if (!weeks[weekKey]) weeks[weekKey] = [];
+                    weeks[weekKey].push(order);
+                });
+                const sortedWeeks = Object.keys(weeks).sort();
+                sortedWeeks.forEach(weekKey => {
+                    const weekOrders = weeks[weekKey];
+                    let wProfit = 0, wUnpaid = 0, wCount = 0, wPaid = 0, wUnpaidCount = 0;
+                    weekOrders.forEach(o => {
+                        if (o.paymentStatus === 'paid') { wProfit += o.price * o.quantity; wPaid++; }
+                        else if (o.paymentStatus === 'unpaid') { wUnpaid += o.price * o.quantity; wUnpaidCount++; }
+                        wCount++;
+                    });
+                    // Parse weekKey to get month and week number
+                    const [monthKeyPart, weekNumPart] = weekKey.split('-W');
+                    const weekNum = parseInt(weekNumPart, 10);
+                    const [year, month] = monthKeyPart.split('-');
+                    const monthName = new Date(year, parseInt(month, 10) - 1).toLocaleString('default', { month: 'long' });
+                    const weekLabel = `${monthName} - ${ordinal(weekNum)} week`;
+                    const weekDiv = document.createElement('div');
+                    weekDiv.className = 'mb-2 ms-3 clickable-row';
+                    weekDiv.innerHTML = `
+                        <div class="d-flex justify-content-between align-items-center bg-white p-2 border" onclick="toggleDetails('week-details-${weekKey}', this)">
+                            <div><span class="chevron">&#9654;</span><b>${weekLabel}</b></div>
+                            <div>
+                                <span class="me-3">Total Profit: <b>${formatCurrency(wProfit)}</b></span>
+                                <span class="me-3">Total Unpaid: <b>${formatCurrency(wUnpaid)}</b></span>
+                                <span class="me-3">Transactions: <b>${wCount}</b></span>
+                                <span class="me-3">Paid: <b>${wPaid}</b></span>
+                                <span class="me-3">Unpaid: <b>${wUnpaidCount}</b></span>
+                            </div>
+                        </div>
+                        <div style="display:none;" class="mt-2 details" id="week-details-${weekKey}"></div>
+                    `;
+                    // Fill in the week details div
+                    const weekDetailsDiv = weekDiv.children[1];
+                    // Group by base item name
+                    const items = {};
+                    weekOrders.forEach(order => {
+                        // Split multiple items in one order (if needed)
+                        let itemNames = order.itemName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+                        itemNames.forEach(name => {
+                            const baseName = getBaseItemName(name);
+                            if (!items[baseName]) items[baseName] = { orders: [], profit: 0, unpaid: 0, count: 0, paid: 0, unpaidCount: 0 };
+                            // Clone order and override itemName for transaction table
+                            let orderClone = { ...order, displayItemName: name };
+                            items[baseName].orders.push(orderClone);
+                            if (order.paymentStatus === 'paid') { items[baseName].profit += order.price * order.quantity; items[baseName].paid++; }
+                            else if (order.paymentStatus === 'unpaid') { items[baseName].unpaid += order.price * order.quantity; items[baseName].unpaidCount++; }
+                            items[baseName].count++;
+                        });
+                    });
+                    // For sorting: store latest transaction date for each item group
+                    const itemLatestDate = {};
+                    Object.keys(items).forEach(baseName => {
+                        const orders = items[baseName].orders;
+                        let latest = 0;
+                        orders.forEach(o => {
+                            const d = new Date(o.date).getTime();
+                            if (d > latest) latest = d;
+                        });
+                        itemLatestDate[baseName] = latest;
+                    });
+                    // Sort by latest transaction date (descending)
+                    const sortedItems = Object.keys(items).sort((a, b) => itemLatestDate[b] - itemLatestDate[a]);
+                    sortedItems.forEach(baseName => {
+                        const itemGroup = items[baseName];
+                        const itemOrders = itemGroup.orders;
+                        let iProfit = itemGroup.profit, iUnpaid = itemGroup.unpaid, iCount = itemGroup.count, iPaid = itemGroup.paid, iUnpaidCount = itemGroup.unpaidCount;
+                        // Make unique ID per week and item
+                        const safeId = `item-details-${weekKey}-${baseName}`.replace(/[^a-zA-Z0-9_-]/g, '_');
+                        const itemDiv = document.createElement('div');
+                        itemDiv.className = 'mb-2 ms-4 clickable-row';
+                        itemDiv.innerHTML = `
+                            <div class="d-flex justify-content-between align-items-center bg-light p-2 border" onclick="toggleDetails('${safeId}', this)">
+                                <div><span class="chevron">&#9654;</span><b>${baseName}</b></div>
+                                <div>
+                                    <span class="me-3">Total Profit: <b>${formatCurrency(iProfit)}</b></span>
+                                    <span class="me-3">Total Unpaid: <b>${formatCurrency(iUnpaid)}</b></span>
+                                    <span class="me-3">Transactions: <b>${iCount}</b></span>
+                                    <span class="me-3">Paid: <b>${iPaid}</b></span>
+                                    <span class="me-3">Unpaid: <b>${iUnpaidCount}</b></span>
+                                </div>
+                            </div>
+                            <div style="display:none;" class="mt-2 details" id="${safeId}"></div>
+                        `;
+                        // Fill in the item details div
+                        const itemDetailsDiv = itemDiv.children[1];
+                        // Transactions table
+                        let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Price</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
+                        itemOrders.forEach(o => {
+                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td>${formatCurrency(o.price)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
+                        });
+                        table += '</tbody></table></div>';
+                        itemDetailsDiv.innerHTML = table;
+                        weekDetailsDiv.appendChild(itemDiv);
+                    });
+                    detailsDiv.appendChild(weekDiv);
+                });
+                container.appendChild(monthDiv);
+            });
+        }
+
+        function toggleDetails(id, btn) {
+            const details = document.getElementById(id);
+            if (!details) return;
+            if (details.style.display === 'none' || details.style.display === '') {
+                details.style.display = 'block';
+                const chevron = btn.querySelector('.chevron');
+                if (chevron) {
+                    chevron.classList.add('rotate');
+                }
+            } else {
+                details.style.display = 'none';
+                const chevron = btn.querySelector('.chevron');
+                if (chevron) {
+                    chevron.classList.remove('rotate');
+                }
+                // Hide all child .details and reset their buttons
+                const childDetails = details.querySelectorAll('.details');
+                childDetails.forEach(child => {
+                    child.style.display = 'none';
+                    // Find the button before this child (in the same parent)
+                    const parent = child.parentElement;
+                    if (parent) {
+                        const btns = parent.querySelectorAll('button');
+                        btns.forEach(childBtn => {
+                            if (childBtn.textContent === 'Hide Details') {
+                                childBtn.textContent = 'Show Details';
+                                childBtn.classList.remove('btn-secondary');
+                                childBtn.classList.add('btn-info');
+                            }
+                        });
+                    }
+                });
+            }
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             initializeCharts();
             updateFinancialSummary();
             // Populate filter dropdown once on page load
             globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory]);
-            populateItemFilterDropdown(globalItemSummary);
             document.getElementById('itemFilter').addEventListener('change', () => {
-                updateItemSummaryTable();
+                // updateItemSummaryTable();
             });
             document.getElementById('sizeFilter').addEventListener('change', () => {
-                updateItemSummaryTable();
+                // updateItemSummaryTable();
             });
         });
 
