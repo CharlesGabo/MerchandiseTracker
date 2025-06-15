@@ -126,6 +126,14 @@ let filterOrderCount = '';
 let historyFilterStartDate = '';
 let historyFilterEndDate = '';
 
+// Variables to store pending claim action
+let pendingClaimStudentNumber = null;
+let pendingClaimTimestamp = null;
+
+// Variables to store pending delete action
+let pendingDeleteStudentNumber = null;
+let pendingDeleteTimestamp = null;
+
 function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
     const inProcessList = document.getElementById('inProcessList');
@@ -291,43 +299,48 @@ function updateOrdersList() {
                 // Add same-student class if this student has multiple orders
                 const rowClass = `${groupClass}${isSameStudent ? ' same-student' : ''}`;
 
-                // Create the row
-                const row = document.createElement('tr');
-                row.className = rowClass;
-                row.innerHTML = `
-                    <td>${firstOrder.studentNumber}</td>
-                    <td>${firstOrder.studentName}</td>
-                    <td>${allItems.map(item => `${item.itemName} (${item.quantity}x)`).join('<br>')}</td>
-                    <td>${allItems.reduce((sum, item) => sum + item.quantity, 0)}</td>
-                    <td>${formatCurrency(total)}</td>
-                    <td>${firstOrder.gcashReference || '-'}</td>
-                    <td>${firstOrder.paymentMode}</td>
-                    <td>${displayTimestamp}</td>
-                    <td>
-                        <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : 'bg-warning'}">
-                            ${firstOrder.paymentStatus}
-                        </span>
-                    </td>
-                    <td>
-                        <div class="btn-group">
-                            ${firstOrder.paymentStatus === 'unpaid' ? 
-                                `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                    <i class="bi bi-check-circle"></i>
-                                </button>
-                                <button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
-                                    <i class="bi bi-arrow-right-circle"></i>
-                                </button>` :
-                                `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                    <i class="bi bi-x-circle"></i>
-                                </button>
-                                <button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                    <i class="bi bi-arrow-right-circle"></i>
-                                </button>`
-                            }
-                        </div>
-                    </td>
-                `;
-                ordersList.appendChild(row);
+                // Create the rows for perfect column alignment
+                allItems.forEach((item, idx) => {
+                    const row = document.createElement('tr');
+                    let cells = '';
+                    if (idx === 0) {
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                    }
+                    cells += `<td>${item.itemName}</td>`;
+                    cells += `<td>${item.quantity}</td>`;
+                    if (idx === 0) {
+                        cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                        cells += `<td rowspan="${allItems.length}">
+                            <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : 'bg-warning'}">
+                                ${firstOrder.paymentStatus}
+                            </span>
+                        </td>`;
+                        cells += `<td rowspan="${allItems.length}">
+                            <div class="btn-group">
+                                ${firstOrder.paymentStatus === 'unpaid' ? 
+                                    `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                        <i class="bi bi-check-circle"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
+                                        <i class="bi bi-arrow-right-circle"></i>
+                                    </button>` :
+                                    `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                        <i class="bi bi-x-circle"></i>
+                                    </button>
+                                    <button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                        <i class="bi bi-arrow-right-circle"></i>
+                                    </button>`
+                                }
+                            </div>
+                        </td>`;
+                    }
+                    row.innerHTML = cells;
+                    ordersList.appendChild(row);
+                });
             });
         });
     }
@@ -600,32 +613,57 @@ function markAsInProcess(studentNumber, timestamp) {
     }
 }
 
-// Mark order as complete
+function openClaimConfirmModal(studentNumber, timestamp) {
+    pendingClaimStudentNumber = studentNumber;
+    pendingClaimTimestamp = timestamp;
+    document.getElementById('claimConfirmInput').value = '';
+    document.getElementById('claimConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('claimConfirmModal'));
+    modal.show();
+}
+
 function markAsComplete(studentNumber, timestamp) {
-    // Prompt for verification
-    const confirmation = prompt("Type 'claimed' to confirm this order is claimed:");
-    if (!confirmation || confirmation.trim().toLowerCase() !== 'claimed') {
-        showNotification("Order not marked as claimed. Please type 'claimed' to confirm.", 'warning');
-        return;
-    }
-    const orderToMove = inProcessOrders.find(order => 
-        order.studentNumber === studentNumber && order.timestamp === timestamp
-    );
-    
-    if (orderToMove) {
-        // Add claim date to the order
-        const now = new Date();
-        orderToMove.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-        
-        // Move to order history instead of back to orders
-        orderHistory.push(orderToMove);
-        inProcessOrders = inProcessOrders.filter(order => 
-            !(order.studentNumber === studentNumber && order.timestamp === timestamp)
-        );
-        saveOrders();
-        updateOrdersList();
-        showNotification('Order marked as claimed and moved to history', 'success');
-    }
+    // Use modal instead of prompt
+    openClaimConfirmModal(studentNumber, timestamp);
+}
+
+// Modal OK button handler
+const claimConfirmBtn = document.getElementById('claimConfirmBtn');
+if (claimConfirmBtn) {
+    claimConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('claimConfirmInput').value.trim().toLowerCase();
+        const invalidFeedback = document.getElementById('claimConfirmInvalid');
+        if (input !== 'claimed') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('claimConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Proceed with claim
+        if (pendingClaimStudentNumber && pendingClaimTimestamp) {
+            const orderToMove = inProcessOrders.find(order => 
+                order.studentNumber === pendingClaimStudentNumber && order.timestamp === pendingClaimTimestamp
+            );
+            if (orderToMove) {
+                // Add claim date to the order
+                const now = new Date();
+                orderToMove.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                // Move to order history instead of back to orders
+                orderHistory.push(orderToMove);
+                inProcessOrders = inProcessOrders.filter(order => 
+                    !(order.studentNumber === pendingClaimStudentNumber && order.timestamp === pendingClaimTimestamp)
+                );
+                saveOrders();
+                updateOrdersList();
+                showNotification('Order marked as claimed and moved to history', 'success');
+            }
+        }
+        pendingClaimStudentNumber = null;
+        pendingClaimTimestamp = null;
+    });
 }
 
 // Revert order back to Orders list
@@ -645,17 +683,45 @@ function revertToOrders(studentNumber, timestamp) {
     }
 }
 
-// Delete order from history
+function openDeleteConfirmModal(studentNumber, timestamp) {
+    pendingDeleteStudentNumber = studentNumber;
+    pendingDeleteTimestamp = timestamp;
+    document.getElementById('deleteConfirmInput').value = '';
+    document.getElementById('deleteConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    modal.show();
+}
+
 function deleteHistoryOrder(studentNumber, timestamp) {
-    const confirmation = prompt("Type 'delete' to confirm deletion of this order from history:");
-    if (!confirmation || confirmation.trim().toLowerCase() !== 'delete') {
-        showNotification("Order not deleted. Please type 'delete' to confirm.", 'warning');
-        return;
-    }
-    orderHistory = orderHistory.filter(order => !(order.studentNumber === studentNumber && order.timestamp === timestamp));
-    saveOrders();
-    updateOrdersList();
-    showNotification('Order deleted from history.', 'info');
+    // Use modal instead of prompt
+    openDeleteConfirmModal(studentNumber, timestamp);
+}
+
+// Modal Delete button handler
+const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
+if (deleteConfirmBtn) {
+    deleteConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('deleteConfirmInput').value.trim().toLowerCase();
+        const invalidFeedback = document.getElementById('deleteConfirmInvalid');
+        if (input !== 'delete') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('deleteConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Proceed with delete
+        if (pendingDeleteStudentNumber && pendingDeleteTimestamp) {
+            orderHistory = orderHistory.filter(order => !(order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp));
+            saveOrders();
+            updateOrdersList();
+            showNotification('Order deleted from history.', 'info');
+        }
+        pendingDeleteStudentNumber = null;
+        pendingDeleteTimestamp = null;
+    });
 }
 
 // Initialize the form submission handler
@@ -676,6 +742,10 @@ function exportAllOrdersToExcel() {
         return;
     }
 
+    // Get current date in YYYY-MM-DD format
+    const now = new Date();
+    const dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
+
     // Create workbook with two sheets
     const wb = XLSX.utils.book_new();
 
@@ -695,8 +765,8 @@ function exportAllOrdersToExcel() {
         XLSX.utils.book_append_sheet(wb, wsHistory, 'Order History');
     }
 
-    // Export to file
-    XLSX.writeFile(wb, 'All_Orders.xlsx');
+    // Export to file with date in filename
+    XLSX.writeFile(wb, `All_Orders_${dateStr}.xlsx`);
     showNotification('Successfully exported all orders.', 'success');
 }
 
