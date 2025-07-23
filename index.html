@@ -91,6 +91,9 @@
             <li class="nav-item" role="presentation">
                 <button class="nav-link" id="history-tab" data-bs-toggle="tab" data-bs-target="#history" type="button" role="tab" aria-controls="history" aria-selected="false">Order History</button>
             </li>
+            <li class="nav-item" role="presentation">
+                <button class="nav-link" id="deleted-tab" data-bs-toggle="tab" data-bs-target="#deleted" type="button" role="tab" aria-controls="deleted" aria-selected="false">Deleted</button>
+            </li>
         </ul>
 
         <div class="tab-content" id="orderTabsContent">
@@ -102,6 +105,7 @@
                             <table class="table">
                                 <thead>
                                     <tr>
+                                        <th>Order No.</th>
                                         <th>Student Number</th>
                                         <th>Student Name</th>
                                         <th>Item</th>
@@ -130,6 +134,7 @@
                             <table class="table">
                                 <thead>
                                     <tr>
+                                        <th>Order No.</th>
                                         <th>Student Number</th>
                                         <th>Student Name</th>
                                         <th>Item</th>
@@ -168,6 +173,7 @@
                             <table class="table">
                                 <thead>
                                     <tr>
+                                        <th>Order No.</th>
                                         <th>Student Number</th>
                                         <th>Student Name</th>
                                         <th>Item</th>
@@ -182,6 +188,35 @@
                                 </thead>
                                 <tbody id="orderHistoryList">
                                     <!-- Order history will be populated here -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="tab-pane fade" id="deleted" role="tabpanel" aria-labelledby="deleted-tab">
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Deleted Orders</h5>
+                        <div class="table-responsive">
+                            <table class="table">
+                                <thead>
+                                    <tr>
+                                        <th>Order No.</th>
+                                        <th>Student Number</th>
+                                        <th>Student Name</th>
+                                        <th>Item</th>
+                                        <th>Quantity</th>
+                                        <th>Total</th>
+                                        <th>GCash Reference Number</th>
+                                        <th>Payment Mode</th>
+                                        <th>Timestamp</th>
+                                        <th>Payment Status</th>
+                                        <th>Claim Date</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="deletedOrdersList">
+                                    <!-- Deleted orders will be populated here -->
                                 </tbody>
                             </table>
                         </div>

@@ -2,6 +2,7 @@
 let orders = JSON.parse(localStorage.getItem('orders')) || [];
 let inProcessOrders = JSON.parse(localStorage.getItem('inProcessOrders')) || [];
 let orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
+let deletedOrders = JSON.parse(localStorage.getItem('deletedOrders')) || [];
 
 // Google Sheets API configuration
 const SPREADSHEET_ID = '18XYMquFq3MFw-26BvuJJZfFCIF2d0JnTBvA4A7hljlo';
@@ -21,6 +22,17 @@ function formatCurrency(amount) {
     }).format(amount);
 }
 
+// Helper to get 4-digit order number based on Google Forms row (index + 1)
+function getOrderNumberByKey(key, allKeys) {
+    const idx = allKeys.indexOf(key);
+    return idx >= 0 ? (idx + 1).toString().padStart(4, '0') : '----';
+}
+
+// Helper to get 4-digit order number based on Google Forms row (index + 1)
+function getOrderNumberByFormIndex(formIndex) {
+    return formIndex ? formIndex.toString().padStart(4, '0') : '----';
+}
+
 // Fetch data from Google Sheets
 async function fetchFromGoogleSheets() {
     try {
@@ -29,9 +41,10 @@ async function fetchFromGoogleSheets() {
         );
         const data = await response.json();
 
+        let didChange = false;
         if (data.values && data.values.length > 1) { // Skip header row
             const header = data.values[0];
-            const newOrders = data.values.slice(1).map(row => {
+            const newOrders = data.values.slice(1).map((row, idx) => {
                 return {
                     studentNumber: row[1] || '-', // Student Number
                     studentName: row[2], // Student Name
@@ -40,13 +53,61 @@ async function fetchFromGoogleSheets() {
                     price: parseFloat(row[7]) || 0, // Total Amount
                     gcashReference: row[8] || '', // GCash Reference Number
                     paymentMode: row[5] || '-', // Payment Mode
-                    paymentStatus: (row[5] && row[5].toLowerCase() === 'paid') ? 'paid' : 'unpaid', // Payment Status (still based on Payment Mode for now)
+                    paymentStatus: (row[5] && row[5].toLowerCase() === 'paid') ? 'paid' : 'unpaid', // Payment Status
                     timestamp: row[0] || '', // Timestamp (raw)
-                    date: row[0] // Timestamp (for merging)
+                    date: row[0], // Timestamp (for merging)
+                    formIndex: idx + 1 // 1-based index for order number
                 };
             });
 
-            // Only add orders not in inProcessOrders or orderHistory
+            // Create a set of keys for all orders in the sheet
+            const sheetKeys = new Set(newOrders.map(order => `${order.studentNumber}_${order.timestamp}`));
+
+            // Helper to move missing orders to deletedOrders
+            function moveMissingToDeleted(arr) {
+                const [kept, toDelete] = arr.reduce((acc, order) => {
+                    const key = `${order.studentNumber}_${order.timestamp}`;
+                    if (sheetKeys.has(key)) {
+                        acc[0].push(order);
+                    } else {
+                        acc[1].push(order);
+                    }
+                    return acc;
+                }, [[], []]);
+                if (toDelete.length > 0) {
+                    deletedOrders = deletedOrders.concat(toDelete);
+                    didChange = true;
+                }
+                if (toDelete.length > 0 || kept.length !== arr.length) didChange = true;
+                return kept;
+            }
+
+            // Move missing orders from all arrays
+            const prevOrders = orders.length, prevInProcess = inProcessOrders.length, prevHistory = orderHistory.length, prevDeleted = deletedOrders.length;
+            orders = moveMissingToDeleted(orders);
+            inProcessOrders = moveMissingToDeleted(inProcessOrders);
+            orderHistory = moveMissingToDeleted(orderHistory);
+
+            // Map formIndex to all matching orders in all arrays (orders, inProcessOrders, orderHistory, deletedOrders)
+            const keyToFormIndex = {};
+            newOrders.forEach(order => {
+                const key = `${order.studentNumber}_${order.timestamp}`;
+                keyToFormIndex[key] = order.formIndex;
+            });
+            function assignFormIndex(arr) {
+                arr.forEach(order => {
+                    const key = `${order.studentNumber}_${order.timestamp}`;
+                    if (keyToFormIndex[key]) {
+                        order.formIndex = keyToFormIndex[key];
+                    }
+                });
+            }
+            assignFormIndex(orders);
+            assignFormIndex(inProcessOrders);
+            assignFormIndex(orderHistory);
+            assignFormIndex(deletedOrders);
+
+            // Only add orders not in inProcessOrders or orderHistory or orders
             const inProcessKeys = new Set(inProcessOrders.map(o => `${o.studentNumber}_${o.timestamp}`));
             const historyKeys = new Set(orderHistory.map(o => `${o.studentNumber}_${o.timestamp}`));
             const existingKeys = new Set(orders.map(o => `${o.studentNumber}_${o.timestamp}`));
@@ -54,13 +115,13 @@ async function fetchFromGoogleSheets() {
                 const key = `${order.studentNumber}_${order.timestamp}`;
                 return !inProcessKeys.has(key) && !historyKeys.has(key) && !existingKeys.has(key);
             });
-
+            if (filteredOrders.length > 0) didChange = true;
             // Add only new filtered orders to the current orders array
             orders = orders.concat(filteredOrders);
-            saveOrders();
-            updateOrdersList();
-            showNotification('Data synchronized successfully!', 'success');
         }
+        saveOrders();
+        updateOrdersList();
+        showNotification('Data synchronized with Google Sheets.' + (didChange ? ' Changes applied.' : ' No changes detected.'), 'success');
     } catch (error) {
         console.error('Error fetching from Google Sheets:', error);
         showNotification('Error syncing with Google Sheets', 'error');
@@ -115,6 +176,7 @@ function saveOrders() {
     localStorage.setItem('orders', JSON.stringify(orders));
     localStorage.setItem('inProcessOrders', JSON.stringify(inProcessOrders));
     localStorage.setItem('orderHistory', JSON.stringify(orderHistory));
+    localStorage.setItem('deletedOrders', JSON.stringify(deletedOrders));
 }
 
 let searchQuery = '';
@@ -138,9 +200,11 @@ function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
     const inProcessList = document.getElementById('inProcessList');
     const orderHistoryList = document.getElementById('orderHistoryList');
+    const deletedOrdersList = document.getElementById('deletedOrdersList');
     if (ordersList) ordersList.innerHTML = '';
     if (inProcessList) inProcessList.innerHTML = '';
     if (orderHistoryList) orderHistoryList.innerHTML = '';
+    if (deletedOrdersList) deletedOrdersList.innerHTML = '';
     
     // First, group orders by student number to identify same students
     const studentGroups = {};
@@ -304,6 +368,8 @@ function updateOrdersList() {
                     const row = document.createElement('tr');
                     let cells = '';
                     if (idx === 0) {
+                        const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
+                        cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
                         cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
                         cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
                     }
@@ -401,6 +467,8 @@ function updateOrdersList() {
                 const row = document.createElement('tr');
                 let cells = '';
                 if (idx === 0) {
+                    const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
+                    cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
                 }
@@ -489,6 +557,8 @@ function updateOrdersList() {
                 const row = document.createElement('tr');
                 let cells = '';
                 if (idx === 0) {
+                    const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
+                    cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
                 }
@@ -509,6 +579,75 @@ function updateOrdersList() {
                 }
                 row.innerHTML = cells;
                 orderHistoryList.appendChild(row);
+            });
+        });
+    }
+
+    // Render Deleted Orders
+    if (deletedOrdersList) {
+        // Group deletedOrders by student number and timestamp
+        let deletedGrouped = {};
+        deletedOrders.forEach(order => {
+            const key = `${order.studentNumber}_${order.timestamp}`;
+            if (!deletedGrouped[key]) deletedGrouped[key] = [];
+            deletedGrouped[key].push(order);
+        });
+        let deletedKeys = Object.keys(deletedGrouped);
+        // Sort by timestamp (newest first)
+        deletedKeys.sort((a, b) => {
+            const aDate = new Date(deletedGrouped[a][0].timestamp);
+            const bDate = new Date(deletedGrouped[b][0].timestamp);
+            return bDate - aDate;
+        });
+        deletedKeys.forEach((key) => {
+            const group = deletedGrouped[key];
+            const firstOrder = group[0];
+            // Collect all items for this order
+            let allItems = [];
+            group.forEach(order => {
+                const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+                items.forEach(itemStr => {
+                    let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                    let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                    let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                    allItems.push({
+                        itemName,
+                        quantity,
+                        order
+                    });
+                });
+            });
+            const total = firstOrder.price;
+            let displayTimestamp = '-';
+            if (firstOrder.timestamp) {
+                if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                    const d = new Date(firstOrder.timestamp);
+                    displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+                } else {
+                    displayTimestamp = firstOrder.timestamp;
+                }
+            }
+            allItems.forEach((item, idx) => {
+                const row = document.createElement('tr');
+                let cells = '';
+                if (idx === 0) {
+                    const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
+                    cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
+                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                }
+                cells += `<td>${item.itemName}</td>`;
+                cells += `<td>${item.quantity}</td>`;
+                if (idx === 0) {
+                    cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                    cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
+                    cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
+                    cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                    cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                    cells += `<td rowspan="${allItems.length}">${firstOrder.claimDate || '-'}</td>`;
+                }
+                row.innerHTML = cells;
+                deletedOrdersList.appendChild(row);
             });
         });
     }
@@ -712,12 +851,14 @@ if (deleteConfirmBtn) {
         const modalEl = document.getElementById('deleteConfirmModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         modal.hide();
-        // Proceed with delete
         if (pendingDeleteStudentNumber && pendingDeleteTimestamp) {
+            // Move deleted order to deletedOrders array
+            const deleted = orderHistory.filter(order => order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp);
+            deletedOrders = deletedOrders.concat(deleted);
             orderHistory = orderHistory.filter(order => !(order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp));
             saveOrders();
             updateOrdersList();
-            showNotification('Order deleted from history.', 'info');
+            showNotification('Order moved to Deleted.', 'info');
         }
         pendingDeleteStudentNumber = null;
         pendingDeleteTimestamp = null;
@@ -730,14 +871,16 @@ if (orderForm) {
     orderForm.addEventListener('submit', addOrder);
 }
 // Add sync button handler
-const syncButton = document.getElementById('syncButton');
-if (syncButton) {
-    syncButton.addEventListener('click', fetchFromGoogleSheets);
-}
+document.addEventListener('DOMContentLoaded', function() {
+    const syncButton = document.getElementById('syncButton');
+    if (syncButton) {
+        syncButton.addEventListener('click', fetchFromGoogleSheets);
+    }
+});
 
 // Export All Orders to Excel
 function exportAllOrdersToExcel() {
-    if (!inProcessOrders.length && !orderHistory.length) {
+    if (!orders.length && !inProcessOrders.length && !orderHistory.length && !deletedOrders.length) {
         showNotification('No orders to export.', 'warning');
         return;
     }
@@ -746,24 +889,32 @@ function exportAllOrdersToExcel() {
     const now = new Date();
     const dateStr = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')}`;
 
-    // Create workbook with two sheets
+    // Create workbook with four sheets
     const wb = XLSX.utils.book_new();
 
+    // Export Orders
+    const ordersData = prepareOrdersForExport(orders, false);
+    const wsOrders = XLSX.utils.json_to_sheet(ordersData);
+    formatWorksheet(wsOrders, ordersData);
+    XLSX.utils.book_append_sheet(wb, wsOrders, 'Orders');
+
     // Export In-Process Orders
-    if (inProcessOrders.length > 0) {
-        const inProcessData = prepareOrdersForExport(inProcessOrders, false);
-        const wsInProcess = XLSX.utils.json_to_sheet(inProcessData);
-        formatWorksheet(wsInProcess, inProcessData);
-        XLSX.utils.book_append_sheet(wb, wsInProcess, 'In-Process Orders');
-    }
+    const inProcessData = prepareOrdersForExport(inProcessOrders, false);
+    const wsInProcess = XLSX.utils.json_to_sheet(inProcessData);
+    formatWorksheet(wsInProcess, inProcessData);
+    XLSX.utils.book_append_sheet(wb, wsInProcess, 'In-Process Orders');
 
     // Export Order History
-    if (orderHistory.length > 0) {
-        const historyData = prepareOrdersForExport(orderHistory, true);
-        const wsHistory = XLSX.utils.json_to_sheet(historyData);
-        formatWorksheet(wsHistory, historyData);
-        XLSX.utils.book_append_sheet(wb, wsHistory, 'Order History');
-    }
+    const historyData = prepareOrdersForExport(orderHistory, true);
+    const wsHistory = XLSX.utils.json_to_sheet(historyData);
+    formatWorksheet(wsHistory, historyData);
+    XLSX.utils.book_append_sheet(wb, wsHistory, 'Order History');
+
+    // Export Deleted Orders
+    const deletedData = prepareOrdersForExport(deletedOrders, true);
+    const wsDeleted = XLSX.utils.json_to_sheet(deletedData);
+    formatWorksheet(wsDeleted, deletedData);
+    XLSX.utils.book_append_sheet(wb, wsDeleted, 'Deleted Orders');
 
     // Export to file with date in filename
     XLSX.writeFile(wb, `All_Orders_${dateStr}.xlsx`);
@@ -810,22 +961,24 @@ function prepareOrdersForExport(orders, isHistory) {
         });
 
         allItems.forEach((item, idx) => {
-            const rowData = {
-                'Student Number': idx === 0 ? firstOrder.studentNumber : '',
-                'Student Name': idx === 0 ? firstOrder.studentName : '',
-                'Item': item.itemName,
-                'Quantity': item.quantity,
-                'Total': idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price}` : '',
-                'GCash Reference Number': idx === 0 ? (firstOrder.gcashReference || '-') : '',
-                'Payment Mode': idx === 0 ? (firstOrder.paymentMode || '-') : '',
-                'Timestamp': idx === 0 ? firstOrder.timestamp : '',
-                'Payment Status': idx === 0 ? firstOrder.paymentStatus : ''
-            };
-
+            const rowData = {};
+            if (idx === 0 && firstOrder.formIndex) {
+                rowData['Order No.'] = firstOrder.formIndex.toString().padStart(4, '0');
+            } else if (idx === 0) {
+                rowData['Order No.'] = '';
+            }
+            rowData['Student Number'] = idx === 0 ? firstOrder.studentNumber : '';
+            rowData['Student Name'] = idx === 0 ? firstOrder.studentName : '';
+            rowData['Item'] = item.itemName;
+            rowData['Quantity'] = item.quantity;
+            rowData['Total'] = idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price}` : '';
+            rowData['GCash Reference Number'] = idx === 0 ? (firstOrder.gcashReference || '-') : '';
+            rowData['Payment Mode'] = idx === 0 ? (firstOrder.paymentMode || '-') : '';
+            rowData['Timestamp'] = idx === 0 ? firstOrder.timestamp : '';
+            rowData['Payment Status'] = idx === 0 ? firstOrder.paymentStatus : '';
             if (isHistory) {
                 rowData['Claim Date'] = idx === 0 ? (firstOrder.claimDate || '-') : '';
             }
-
             exportData.push(rowData);
         });
     });
@@ -886,87 +1039,71 @@ function importAllOrdersFromExcel(event) {
         try {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
-            
-            // Process each sheet
-            workbook.SheetNames.forEach(sheetName => {
-                const sheet = workbook.Sheets[sheetName];
-                const jsonData = XLSX.utils.sheet_to_json(sheet);
-                
-                if (!jsonData.length) {
-                    showNotification(`No data found in sheet: ${sheetName}`, 'warning');
-                    return;
-                }
 
-                // Process the imported data
+            // Track if any section was imported
+            let importedAny = false;
+
+            // Helper to process a sheet into an array of orders
+            function processSheet(jsonData, isHistory) {
                 const importedOrders = [];
                 let currentOrder = null;
-
                 jsonData.forEach(row => {
                     if (row['Student Number']) {
-                        // This is a new order
-                        if (currentOrder) {
-                            importedOrders.push(currentOrder);
-                        }
+                        if (currentOrder) importedOrders.push(currentOrder);
                         currentOrder = {
                             studentNumber: row['Student Number'],
                             studentName: row['Student Name'],
                             itemName: row['Item'],
                             quantity: parseInt(row['Quantity']) || 1,
-                            price: parseFloat(row['Total'].replace('₱', '')) || 0,
+                            price: row['Total'] ? parseFloat(String(row['Total']).replace('₱', '')) || 0 : 0,
                             gcashReference: row['GCash Reference Number'] === '-' ? '' : row['GCash Reference Number'],
                             paymentMode: row['Payment Mode'] === '-' ? '' : row['Payment Mode'],
                             timestamp: row['Timestamp'],
-                            paymentStatus: row['Payment Status'].toLowerCase(),
+                            paymentStatus: row['Payment Status'] ? row['Payment Status'].toLowerCase() : '',
                             date: row['Timestamp']
                         };
-
-                        if (row['Claim Date'] && row['Claim Date'] !== '-') {
+                        if (isHistory && row['Claim Date'] && row['Claim Date'] !== '-') {
                             currentOrder.claimDate = row['Claim Date'];
                         }
+                        if (row['Order No.']) {
+                            currentOrder.formIndex = parseInt(row['Order No.'], 10);
+                        }
                     } else if (currentOrder) {
-                        // This is an additional item for the current order
                         currentOrder.itemName += ', ' + row['Item'];
                     }
                 });
+                if (currentOrder) importedOrders.push(currentOrder);
+                return importedOrders;
+            }
 
-                // Add the last order
-                if (currentOrder) {
-                    importedOrders.push(currentOrder);
-                }
-
-                // Update the appropriate array based on sheet name
-                if (sheetName.toLowerCase().includes('history')) {
-                    orderHistory = importedOrders;
-                } else {
-                    inProcessOrders = importedOrders;
-                }
-            });
-
-            // Check for orders that should be in the Orders tab
-            const allOrders = [...inProcessOrders, ...orderHistory];
-            const orderKeys = new Set(orders.map(o => `${o.studentNumber}_${o.timestamp}`));
-            
-            // Filter out orders that are already in inProcessOrders or orderHistory
-            orders = orders.filter(order => {
-                const key = `${order.studentNumber}_${order.timestamp}`;
-                return !allOrders.some(o => `${o.studentNumber}_${o.timestamp}` === key);
-            });
-
-            // Add any orders from inProcessOrders or orderHistory that should be in Orders
-            allOrders.forEach(order => {
-                const key = `${order.studentNumber}_${order.timestamp}`;
-                if (!orderKeys.has(key)) {
-                    // If the order is in inProcessOrders and is unpaid, add it to Orders
-                    if (inProcessOrders.some(o => `${o.studentNumber}_${o.timestamp}` === key) && 
-                        order.paymentStatus === 'unpaid') {
-                        orders.push(order);
-                    }
+            // Process each sheet
+            workbook.SheetNames.forEach(sheetName => {
+                const sheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(sheet);
+                if (!jsonData.length) return;
+                if (sheetName.toLowerCase().includes('orders') && sheetName.toLowerCase() === 'orders') {
+                    orders = processSheet(jsonData, false);
+                    importedAny = true;
+                } else if (sheetName.toLowerCase().includes('in-process')) {
+                    inProcessOrders = processSheet(jsonData, false);
+                    importedAny = true;
+                } else if (sheetName.toLowerCase().includes('history')) {
+                    orderHistory = processSheet(jsonData, true);
+                    importedAny = true;
+                } else if (sheetName.toLowerCase().includes('deleted')) {
+                    deletedOrders = processSheet(jsonData, true);
+                    importedAny = true;
                 }
             });
+
+            if (!importedAny) {
+                showNotification('No recognized sheets (Orders, In-Process Orders, Order History, Deleted Orders) found in file.', 'warning');
+                return;
+            }
 
             saveOrders();
             updateOrdersList();
-            showNotification('Successfully imported all orders and updated Orders tab.', 'success');
+            showNotification('Successfully imported all orders and updated all sections.', 'success');
         } catch (error) {
             console.error('Error importing Excel file:', error);
             showNotification('Error importing Excel file. Please check the file format.', 'error');
