@@ -196,6 +196,10 @@ let pendingClaimTimestamp = null;
 let pendingDeleteStudentNumber = null;
 let pendingDeleteTimestamp = null;
 
+// Variables to store pending notify action
+let pendingNotifyStudentNumber = null;
+let pendingNotifyTimestamp = null;
+
 function updateOrdersList() {
     const ordersList = document.getElementById('ordersList');
     const inProcessList = document.getElementById('inProcessList');
@@ -206,9 +210,13 @@ function updateOrdersList() {
     if (orderHistoryList) orderHistoryList.innerHTML = '';
     if (deletedOrdersList) deletedOrdersList.innerHTML = '';
     
+    // Filter out orders that are present in deletedOrders
+    const deletedKeys = new Set(deletedOrders.map(order => `${order.studentNumber}_${order.timestamp}`));
+    const visibleOrders = orders.filter(order => !deletedKeys.has(`${order.studentNumber}_${order.timestamp}`));
+
     // First, group orders by student number to identify same students
     const studentGroups = {};
-    orders.forEach(order => {
+    visibleOrders.forEach(order => {
         if (!studentGroups[order.studentNumber]) {
             studentGroups[order.studentNumber] = [];
         }
@@ -217,7 +225,7 @@ function updateOrdersList() {
 
     // Group orders by date
     const dateGroups = {};
-    orders.forEach(order => {
+    visibleOrders.forEach(order => {
         let orderDate = '';
         if (order.timestamp) {
             if (order.timestamp.length > 10 && order.timestamp.includes('T')) {
@@ -388,19 +396,22 @@ function updateOrdersList() {
                         cells += `<td rowspan="${allItems.length}">
                             <div class="btn-group">
                                 ${firstOrder.paymentStatus === 'unpaid' ? 
-                                    `<button class="btn btn-sm btn-success" onclick="markAllPaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                    `<button class="btn btn-sm btn-success" onclick="openPaidConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                                         <i class="bi bi-check-circle"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-primary" disabled title="Pay first before processing">
+                                    <button class="btn btn-sm btn-primary" onclick="openProcessConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                                         <i class="bi bi-arrow-right-circle"></i>
                                     </button>` :
                                     `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                                         <i class="bi bi-x-circle"></i>
                                     </button>
-                                    <button class="btn btn-sm btn-primary" onclick="markAsInProcess('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                    <button class="btn btn-sm btn-primary" onclick="openProcessConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                                         <i class="bi bi-arrow-right-circle"></i>
                                     </button>`
                                 }
+                                <button class="btn btn-sm btn-danger" onclick="deleteOrderFromOrders('${firstOrder.studentNumber}', '${firstOrder.timestamp}')" title="Delete Order">
+                                    <i class="bi bi-trash"></i>
+                                </button>
                             </div>
                         </td>`;
                     }
@@ -479,13 +490,20 @@ function updateOrdersList() {
                     cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
-                    cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                    let statusClass = firstOrder.paymentStatus === 'paid' ? 'bg-success' : (firstOrder.paymentStatus === 'half-paid' ? 'bg-warning' : 'bg-secondary');
+                    let statusContent = firstOrder.paymentStatus === 'half-paid'
+                      ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openHalfPaidToPaidModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`
+                      : `<span class="badge ${statusClass}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`;
+                    cells += `<td rowspan="${allItems.length}">${statusContent}</td>`;
                     cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'half-paid' ? ' disabled title="Pay in full before claiming"' : ''}>
                             <i class="bi bi-check-circle"></i> Claimed
                         </button>
-                        <button class="btn btn-sm btn-secondary" onclick="revertToOrders('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                        <button class="btn btn-sm btn-secondary" onclick="openRevertConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                             <i class="bi bi-arrow-left-circle"></i> Revert
+                        </button>
+                        <button class="btn btn-sm btn-warning" onclick="openNotifyBuyerModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')" title="Notify Buyer">
+                            Notify
                         </button>
                     </td>`;
                 }
@@ -496,155 +514,160 @@ function updateOrdersList() {
     }
 
     // Update Order History list
-    // Group orderHistory by student number and timestamp
-    let historyGrouped = {};
-    orderHistory.forEach(order => {
-        const key = `${order.studentNumber}_${order.timestamp}`;
-        if (!historyGrouped[key]) historyGrouped[key] = [];
-        historyGrouped[key].push(order);
-    });
-    let historyKeys = Object.keys(historyGrouped);
-    // Sort by timestamp (newest first)
-    historyKeys.sort((a, b) => {
-        const aDate = new Date(historyGrouped[a][0].timestamp);
-        const bDate = new Date(historyGrouped[b][0].timestamp);
-        return bDate - aDate;
-    });
     if (orderHistoryList) {
-        historyKeys.forEach((key, groupIdx) => {
-            const group = historyGrouped[key];
-            const firstOrder = group[0];
-            // Filter by claim date range
-            if (historyFilterStartDate || historyFilterEndDate) {
-                let claimDate = firstOrder.claimDate ? firstOrder.claimDate.split(' ')[0] : '';
-                if (historyFilterStartDate && claimDate < historyFilterStartDate) return;
-                if (historyFilterEndDate && claimDate > historyFilterEndDate) return;
+        // Group orderHistory by date
+        const dateGroups = {};
+        orderHistory.forEach(order => {
+            let orderDate = '';
+            if (order.timestamp) {
+                if (order.timestamp.length > 10 && order.timestamp.includes('T')) {
+                    orderDate = order.timestamp.split('T')[0];
+                } else {
+                    orderDate = order.timestamp.split(' ')[0];
+                }
             }
-            // Collect all items for this order
-            let allItems = [];
-            group.forEach(order => {
-                const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
-                items.forEach(itemStr => {
-                    let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
-                    let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
-                    let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
-                    allItems.push({
-                        itemName,
-                        quantity,
-                        order
+            if (!dateGroups[orderDate]) {
+                dateGroups[orderDate] = [];
+            }
+            dateGroups[orderDate].push(order);
+        });
+        // Sort dates in descending order (newest first)
+        const sortedDates = Object.keys(dateGroups).sort((a, b) => {
+            const parseDate = (str) => new Date(str);
+            return parseDate(b) - parseDate(a);
+        });
+        sortedDates.forEach(date => {
+            const dateOrders = dateGroups[date];
+            // Add date header
+            const dateHeader = document.createElement('tr');
+            dateHeader.className = 'date-header';
+            dateHeader.innerHTML = `<td colspan="13" class="bg-light fw-bold">${date}</td>`;
+            orderHistoryList.appendChild(dateHeader);
+            // Group by student number and timestamp within each date
+            let grouped = {};
+            dateOrders.forEach(order => {
+                const key = `${order.studentNumber}_${order.timestamp}`;
+                if (!grouped[key]) grouped[key] = [];
+                grouped[key].push(order);
+            });
+            let orderKeys = Object.keys(grouped);
+            // Sort by timestamp (newest first)
+            orderKeys.sort((a, b) => {
+                const aDate = new Date(grouped[a][0].timestamp);
+                const bDate = new Date(grouped[b][0].timestamp);
+                return bDate - aDate;
+            });
+            orderKeys.forEach((key, groupIdx) => {
+                const group = grouped[key];
+                const firstOrder = group[0];
+                // Filter by claim date range
+                if (historyFilterStartDate || historyFilterEndDate) {
+                    let claimDate = firstOrder.claimDate ? firstOrder.claimDate.split(' ')[0] : '';
+                    if (historyFilterStartDate && claimDate < historyFilterStartDate) return;
+                    if (historyFilterEndDate && claimDate > historyFilterEndDate) return;
+                }
+                // Collect all items for this order
+                let allItems = [];
+                group.forEach(order => {
+                    const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+                    items.forEach(itemStr => {
+                        let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                        let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                        let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
+                        allItems.push({
+                            itemName,
+                            quantity,
+                            order
+                        });
                     });
                 });
-            });
-            // Search filter for order history
-            const matchesSearch = (
-                group[0].studentNumber.toLowerCase().includes(searchQuery) ||
-                group[0].studentName.toLowerCase().includes(searchQuery) ||
-                allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
-                group[0].gcashReference?.toLowerCase().includes(searchQuery)
-            );
-            if (!matchesSearch && searchQuery) return;
-            const total = firstOrder.price;
-            let displayTimestamp = '-';
-            if (firstOrder.timestamp) {
-                if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
-                    const d = new Date(firstOrder.timestamp);
-                    displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-                } else {
-                    displayTimestamp = firstOrder.timestamp;
+                // Search filter for order history
+                const matchesSearch = (
+                    group[0].studentNumber.toLowerCase().includes(searchQuery) ||
+                    group[0].studentName.toLowerCase().includes(searchQuery) ||
+                    allItems.some(item => item.itemName.toLowerCase().includes(searchQuery)) ||
+                    group[0].gcashReference?.toLowerCase().includes(searchQuery)
+                );
+                if (!matchesSearch && searchQuery) return;
+                const total = firstOrder.price;
+                let displayTimestamp = '-';
+                if (firstOrder.timestamp) {
+                    if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
+                        const d = new Date(firstOrder.timestamp);
+                        displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
+                    } else {
+                        displayTimestamp = firstOrder.timestamp;
+                    }
                 }
-            }
-            allItems.forEach((item, idx) => {
-                const row = document.createElement('tr');
-                let cells = '';
-                if (idx === 0) {
-                    const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
-                    cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
-                }
-                cells += `<td>${item.itemName}</td>`;
-                cells += `<td>${item.quantity}</td>`;
-                if (idx === 0) {
-                    cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
-                    cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.claimDate || '-'}</td>`;
-                    cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                        <button class="btn btn-sm btn-danger" onclick="deleteHistoryOrder('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                            <i class="bi bi-trash"></i> Delete
-                        </button>
-                    </td>`;
-                }
-                row.innerHTML = cells;
-                orderHistoryList.appendChild(row);
+                allItems.forEach((item, idx) => {
+                    const row = document.createElement('tr');
+                    let cells = '';
+                    if (idx === 0) {
+                        const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
+                        cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                    }
+                    cells += `<td>${item.itemName}</td>`;
+                    cells += `<td>${item.quantity}</td>`;
+                    if (idx === 0) {
+                        cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
+                        cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.claimDate || '-'}</td>`;
+                        cells += `<td rowspan="${allItems.length}" class="action-buttons">
+                            <button class="btn btn-sm btn-danger" onclick="deleteHistoryOrder('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                <i class="bi bi-trash"></i> Delete
+                            </button>
+                            <button class="btn btn-sm btn-secondary" onclick="openRevertConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}', true)"><i class='bi bi-arrow-left-circle'></i> Revert</button>
+                        </td>`;
+                    }
+                    row.innerHTML = cells;
+                    orderHistoryList.appendChild(row);
+                });
             });
         });
     }
 
     // Render Deleted Orders
     if (deletedOrdersList) {
-        // Group deletedOrders by student number and timestamp
-        let deletedGrouped = {};
-        deletedOrders.forEach(order => {
-            const key = `${order.studentNumber}_${order.timestamp}`;
-            if (!deletedGrouped[key]) deletedGrouped[key] = [];
-            deletedGrouped[key].push(order);
-        });
-        let deletedKeys = Object.keys(deletedGrouped);
+        // Instead of grouping by student number and timestamp, just sort and render each deleted order individually
+        let sortedDeleted = [...deletedOrders];
         // Sort by timestamp (newest first)
-        deletedKeys.sort((a, b) => {
-            const aDate = new Date(deletedGrouped[a][0].timestamp);
-            const bDate = new Date(deletedGrouped[b][0].timestamp);
+        sortedDeleted.sort((a, b) => {
+            const aDate = new Date(a.timestamp);
+            const bDate = new Date(b.timestamp);
             return bDate - aDate;
         });
-        deletedKeys.forEach((key) => {
-            const group = deletedGrouped[key];
-            const firstOrder = group[0];
+        sortedDeleted.forEach((order) => {
             // Collect all items for this order
-            let allItems = [];
-            group.forEach(order => {
-                const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
-                items.forEach(itemStr => {
-                    let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
-                    let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
-                    let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
-                    allItems.push({
-                        itemName,
-                        quantity,
-                        order
-                    });
-                });
-            });
-            const total = firstOrder.price;
-            let displayTimestamp = '-';
-            if (firstOrder.timestamp) {
-                if (firstOrder.timestamp.length > 10 && firstOrder.timestamp.includes('T')) {
-                    const d = new Date(firstOrder.timestamp);
-                    displayTimestamp = `${d.getFullYear()}-${(d.getMonth()+1).toString().padStart(2,'0')}-${d.getDate().toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
-                } else {
-                    displayTimestamp = firstOrder.timestamp;
-                }
-            }
-            allItems.forEach((item, idx) => {
+            const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+            items.forEach((itemStr, idx) => {
+                let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+                let itemName = itemMatch ? itemMatch[1].trim() : itemStr;
+                let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : 1;
                 const row = document.createElement('tr');
                 let cells = '';
                 if (idx === 0) {
-                    const orderNo = getOrderNumberByFormIndex(firstOrder.formIndex);
-                    cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                    const orderNo = getOrderNumberByFormIndex(order.formIndex);
+                    cells += `<td rowspan="${items.length}">${orderNo}</td>`;
+                    cells += `<td rowspan="${items.length}">${order.studentNumber}</td>`;
+                    cells += `<td rowspan="${items.length}">${order.studentName}</td>`;
                 }
-                cells += `<td>${item.itemName}</td>`;
-                cells += `<td>${item.quantity}</td>`;
+                cells += `<td>${itemName}</td>`;
+                cells += `<td>${quantity}</td>`;
                 if (idx === 0) {
-                    cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
-                    cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
-                    cells += `<td rowspan="${allItems.length}"><span class="payment-status ${firstOrder.paymentStatus}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span></td>`;
-                    cells += `<td rowspan="${allItems.length}">${firstOrder.claimDate || '-'}</td>`;
+                    cells += `<td rowspan="${items.length}">${formatCurrency(order.price)}</td>`;
+                    cells += `<td rowspan="${items.length}">${order.gcashReference || '-'}</td>`;
+                    cells += `<td rowspan="${items.length}">${order.paymentMode || '-'}</td>`;
+                    // Show full timestamp
+                    cells += `<td rowspan="${items.length}">${order.timestamp}</td>`;
+                    cells += `<td rowspan="${items.length}"><span class="payment-status ${order.paymentStatus}">${order.paymentStatus.charAt(0).toUpperCase() + order.paymentStatus.slice(1)}</span></td>`;
+                    cells += `<td rowspan="${items.length}">${order.claimDate || '-'}</td>`;
+                    // Add revert button
+                    cells += `<td rowspan="${items.length}"><button class='btn btn-sm btn-secondary' onclick="openDeletedRevertConfirmModal('${order.studentNumber}', '${order.timestamp}')"><i class='bi bi-arrow-left-circle'></i> Revert</button></td>`;
                 }
                 row.innerHTML = cells;
                 deletedOrdersList.appendChild(row);
@@ -742,6 +765,10 @@ function markAsInProcess(studentNumber, timestamp) {
     );
     
     if (orderToMove) {
+        // If unpaid, set to half-paid
+        if (orderToMove.paymentStatus === 'unpaid') {
+            orderToMove.paymentStatus = 'half-paid';
+        }
         inProcessOrders.push(orderToMove);
         orders = orders.filter(order => 
             !(order.studentNumber === studentNumber && order.timestamp === timestamp)
@@ -770,9 +797,9 @@ function markAsComplete(studentNumber, timestamp) {
 const claimConfirmBtn = document.getElementById('claimConfirmBtn');
 if (claimConfirmBtn) {
     claimConfirmBtn.addEventListener('click', function() {
-        const input = document.getElementById('claimConfirmInput').value.trim().toLowerCase();
+        const input = document.getElementById('claimConfirmInput').value.trim();
         const invalidFeedback = document.getElementById('claimConfirmInvalid');
-        if (input !== 'claimed') {
+        if (input !== 'Claimed') {
             invalidFeedback.style.display = 'block';
             return;
         }
@@ -803,6 +830,16 @@ if (claimConfirmBtn) {
         pendingClaimStudentNumber = null;
         pendingClaimTimestamp = null;
     });
+    // Allow pressing Enter in the input to trigger the OK button
+    const claimConfirmInput = document.getElementById('claimConfirmInput');
+    if (claimConfirmInput) {
+        claimConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                claimConfirmBtn.click();
+            }
+        });
+    }
 }
 
 // Revert order back to Orders list
@@ -812,6 +849,8 @@ function revertToOrders(studentNumber, timestamp) {
     );
     
     if (orderToMove) {
+        // Always revert paymentStatus to 'unpaid' when moving back to Orders
+        orderToMove.paymentStatus = 'unpaid';
         orders.push(orderToMove);
         inProcessOrders = inProcessOrders.filter(order => 
             !(order.studentNumber === studentNumber && order.timestamp === timestamp)
@@ -819,6 +858,19 @@ function revertToOrders(studentNumber, timestamp) {
         saveOrders();
         updateOrdersList();
         showNotification('Order reverted back to Orders list', 'info');
+    }
+}
+
+// Add a new function to handle revert from order history
+function revertHistoryOrderToInProcess(studentNumber, timestamp) {
+    const idx = orderHistory.findIndex(order => order.studentNumber === studentNumber && order.timestamp === timestamp);
+    if (idx !== -1) {
+        const [order] = orderHistory.splice(idx, 1);
+        order.paymentStatus = 'half-paid';
+        inProcessOrders.push(order);
+        saveOrders();
+        updateOrdersList();
+        showNotification('Order reverted to In-Process section.', 'info');
     }
 }
 
@@ -840,9 +892,9 @@ function deleteHistoryOrder(studentNumber, timestamp) {
 const deleteConfirmBtn = document.getElementById('deleteConfirmBtn');
 if (deleteConfirmBtn) {
     deleteConfirmBtn.addEventListener('click', function() {
-        const input = document.getElementById('deleteConfirmInput').value.trim().toLowerCase();
+        const input = document.getElementById('deleteConfirmInput').value.trim();
         const invalidFeedback = document.getElementById('deleteConfirmInvalid');
-        if (input !== 'delete') {
+        if (input !== 'Delete') {
             invalidFeedback.style.display = 'block';
             return;
         }
@@ -852,10 +904,14 @@ if (deleteConfirmBtn) {
         const modal = bootstrap.Modal.getInstance(modalEl);
         modal.hide();
         if (pendingDeleteStudentNumber && pendingDeleteTimestamp) {
-            // Move deleted order to deletedOrders array
-            const deleted = orderHistory.filter(order => order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp);
+            let deleted = orderHistory.filter(order => order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp);
+            if (deleted.length === 0) {
+                deleted = orders.filter(order => order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp);
+                orders = orders.filter(order => !(order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp));
+            } else {
+                orderHistory = orderHistory.filter(order => !(order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp));
+            }
             deletedOrders = deletedOrders.concat(deleted);
-            orderHistory = orderHistory.filter(order => !(order.studentNumber === pendingDeleteStudentNumber && order.timestamp === pendingDeleteTimestamp));
             saveOrders();
             updateOrdersList();
             showNotification('Order moved to Deleted.', 'info');
@@ -863,6 +919,46 @@ if (deleteConfirmBtn) {
         pendingDeleteStudentNumber = null;
         pendingDeleteTimestamp = null;
     });
+    // Allow pressing Enter in the input to trigger the delete button
+    const deleteConfirmInput = document.getElementById('deleteConfirmInput');
+    if (deleteConfirmInput) {
+        deleteConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                deleteConfirmBtn.click();
+            }
+        });
+    }
+}
+
+// Add the deleteOrderFromOrders function to handle deleting from orders (move to deletedOrders with confirmation)
+function deleteOrderFromOrders(studentNumber, timestamp) {
+    pendingDeleteStudentNumber = studentNumber;
+    pendingDeleteTimestamp = timestamp;
+    document.getElementById('deleteConfirmInput').value = '';
+    document.getElementById('deleteConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('deleteConfirmModal'));
+    modal.show();
+    // On confirm, move from orders to deletedOrders
+    // The existing modal handler will handle the move, but we need to check both orders and orderHistory
+    // So, in the modal handler, update the logic:
+    // Instead of only moving from orderHistory, also check orders
+}
+
+// Add the revertDeletedOrder function
+function revertDeletedOrder(studentNumber, timestamp) {
+    // Find the order in deletedOrders
+    const idx = deletedOrders.findIndex(order => order.studentNumber === studentNumber && order.timestamp === timestamp);
+    if (idx !== -1) {
+        const [order] = deletedOrders.splice(idx, 1);
+        // Always revert paymentStatus to 'unpaid' when restoring from Deleted
+        order.paymentStatus = 'unpaid';
+        saveOrders(); // Save after removing from deletedOrders, so deletedKeys is updated
+        orders.push(order);
+        saveOrders();
+        updateOrdersList();
+        showNotification('Order reverted back to Orders section.', 'info');
+    }
 }
 
 // Initialize the form submission handler
@@ -917,7 +1013,7 @@ function exportAllOrdersToExcel() {
     XLSX.utils.book_append_sheet(wb, wsDeleted, 'Deleted Orders');
 
     // Export to file with date in filename
-    XLSX.writeFile(wb, `All_Orders_${dateStr}.xlsx`);
+    XLSX.writeFile(wb, `MerchTracker_All_Orders_${dateStr}.xlsx`);
     showNotification('Successfully exported all orders.', 'success');
 }
 
@@ -1119,4 +1215,272 @@ if (document.getElementById('exportAllBtn')) {
 
 if (document.getElementById('importAllBtn')) {
     document.getElementById('importAllBtn').addEventListener('change', importAllOrdersFromExcel);
+} 
+
+function openNotifyBuyerModal(studentNumber, timestamp) {
+    pendingNotifyStudentNumber = studentNumber;
+    pendingNotifyTimestamp = timestamp;
+    document.getElementById('notifyBuyerInput').value = '';
+    document.getElementById('notifyBuyerInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('notifyBuyerModal'));
+    modal.show();
+}
+const notifyBuyerBtn = document.getElementById('notifyBuyerBtn');
+if (notifyBuyerBtn) {
+    notifyBuyerBtn.addEventListener('click', function() {
+        const input = document.getElementById('notifyBuyerInput').value.trim();
+        const invalidFeedback = document.getElementById('notifyBuyerInvalid');
+        if (input !== 'Notify Buyer') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('notifyBuyerModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Placeholder for notification logic
+        showNotification('Buyer has been notified.', 'warning');
+        pendingNotifyStudentNumber = null;
+        pendingNotifyTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the notify button
+    const notifyBuyerInput = document.getElementById('notifyBuyerInput');
+    if (notifyBuyerInput) {
+        notifyBuyerInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                notifyBuyerBtn.click();
+            }
+        });
+    }
+} 
+
+let pendingRevertStudentNumber = null;
+let pendingRevertTimestamp = null;
+let pendingRevertIsHistory = false;
+function openRevertConfirmModal(studentNumber, timestamp, isHistory = false) {
+    pendingRevertStudentNumber = studentNumber;
+    pendingRevertTimestamp = timestamp;
+    pendingRevertIsHistory = isHistory;
+    document.getElementById('revertConfirmInput').value = '';
+    document.getElementById('revertConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('revertConfirmModal'));
+    modal.show();
+}
+const revertConfirmBtn = document.getElementById('revertConfirmBtn');
+if (revertConfirmBtn) {
+    revertConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('revertConfirmInput').value.trim();
+        const invalidFeedback = document.getElementById('revertConfirmInvalid');
+        if (input !== 'Revert') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('revertConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually revert the order
+        if (pendingRevertStudentNumber && pendingRevertTimestamp) {
+            if (pendingRevertIsHistory) {
+                revertHistoryOrderToInProcess(pendingRevertStudentNumber, pendingRevertTimestamp);
+            } else {
+                revertToOrders(pendingRevertStudentNumber, pendingRevertTimestamp);
+            }
+        }
+        pendingRevertStudentNumber = null;
+        pendingRevertTimestamp = null;
+        pendingRevertIsHistory = false;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const revertConfirmInput = document.getElementById('revertConfirmInput');
+    if (revertConfirmInput) {
+        revertConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                revertConfirmBtn.click();
+            }
+        });
+    }
+} 
+
+let pendingPaidStudentNumber = null;
+let pendingPaidTimestamp = null;
+function openPaidConfirmModal(studentNumber, timestamp) {
+    pendingPaidStudentNumber = studentNumber;
+    pendingPaidTimestamp = timestamp;
+    document.getElementById('paidConfirmInput').value = '';
+    document.getElementById('paidConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('paidConfirmModal'));
+    modal.show();
+}
+const paidConfirmBtn = document.getElementById('paidConfirmBtn');
+if (paidConfirmBtn) {
+    paidConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('paidConfirmInput').value.trim();
+        const invalidFeedback = document.getElementById('paidConfirmInvalid');
+        if (input !== 'Paid') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('paidConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually mark as paid
+        if (pendingPaidStudentNumber && pendingPaidTimestamp) {
+            markAllPaid(pendingPaidStudentNumber, pendingPaidTimestamp);
+        }
+        pendingPaidStudentNumber = null;
+        pendingPaidTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const paidConfirmInput = document.getElementById('paidConfirmInput');
+    if (paidConfirmInput) {
+        paidConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                paidConfirmBtn.click();
+            }
+        });
+    }
+} 
+
+let pendingProcessStudentNumber = null;
+let pendingProcessTimestamp = null;
+function openProcessConfirmModal(studentNumber, timestamp) {
+    pendingProcessStudentNumber = studentNumber;
+    pendingProcessTimestamp = timestamp;
+    document.getElementById('processConfirmInput').value = '';
+    document.getElementById('processConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('processConfirmModal'));
+    modal.show();
+}
+const processConfirmBtn = document.getElementById('processConfirmBtn');
+if (processConfirmBtn) {
+    processConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('processConfirmInput').value.trim();
+        const invalidFeedback = document.getElementById('processConfirmInvalid');
+        if (input !== 'Process') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('processConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually process the order
+        if (pendingProcessStudentNumber && pendingProcessTimestamp) {
+            markAsInProcess(pendingProcessStudentNumber, pendingProcessTimestamp);
+        }
+        pendingProcessStudentNumber = null;
+        pendingProcessTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const processConfirmInput = document.getElementById('processConfirmInput');
+    if (processConfirmInput) {
+        processConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                processConfirmBtn.click();
+            }
+        });
+    }
+} 
+
+let pendingDeletedRevertStudentNumber = null;
+let pendingDeletedRevertTimestamp = null;
+function openDeletedRevertConfirmModal(studentNumber, timestamp) {
+    pendingDeletedRevertStudentNumber = studentNumber;
+    pendingDeletedRevertTimestamp = timestamp;
+    document.getElementById('deletedRevertConfirmInput').value = '';
+    document.getElementById('deletedRevertConfirmInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('deletedRevertConfirmModal'));
+    modal.show();
+}
+const deletedRevertConfirmBtn = document.getElementById('deletedRevertConfirmBtn');
+if (deletedRevertConfirmBtn) {
+    deletedRevertConfirmBtn.addEventListener('click', function() {
+        const input = document.getElementById('deletedRevertConfirmInput').value.trim();
+        const invalidFeedback = document.getElementById('deletedRevertConfirmInvalid');
+        if (input !== 'Revert') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('deletedRevertConfirmModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually revert the order
+        if (pendingDeletedRevertStudentNumber && pendingDeletedRevertTimestamp) {
+            revertDeletedOrder(pendingDeletedRevertStudentNumber, pendingDeletedRevertTimestamp);
+        }
+        pendingDeletedRevertStudentNumber = null;
+        pendingDeletedRevertTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const deletedRevertConfirmInput = document.getElementById('deletedRevertConfirmInput');
+    if (deletedRevertConfirmInput) {
+        deletedRevertConfirmInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                deletedRevertConfirmBtn.click();
+            }
+        });
+    }
+} 
+
+let pendingHalfPaidStudentNumber = null;
+let pendingHalfPaidTimestamp = null;
+function openHalfPaidToPaidModal(studentNumber, timestamp) {
+    pendingHalfPaidStudentNumber = studentNumber;
+    pendingHalfPaidTimestamp = timestamp;
+    document.getElementById('halfPaidToPaidInput').value = '';
+    document.getElementById('halfPaidToPaidInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('halfPaidToPaidModal'));
+    modal.show();
+}
+const halfPaidToPaidBtn = document.getElementById('halfPaidToPaidBtn');
+if (halfPaidToPaidBtn) {
+    halfPaidToPaidBtn.addEventListener('click', function() {
+        const input = document.getElementById('halfPaidToPaidInput').value.trim();
+        const invalidFeedback = document.getElementById('halfPaidToPaidInvalid');
+        if (input !== 'Paid') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('halfPaidToPaidModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually mark as paid
+        if (pendingHalfPaidStudentNumber && pendingHalfPaidTimestamp) {
+            // Find the order in inProcessOrders and set paymentStatus to 'paid'
+            const order = inProcessOrders.find(order => order.studentNumber === pendingHalfPaidStudentNumber && order.timestamp === pendingHalfPaidTimestamp);
+            if (order) {
+                order.paymentStatus = 'paid';
+                saveOrders();
+                updateOrdersList();
+                showNotification('Order marked as paid.', 'success');
+            }
+        }
+        pendingHalfPaidStudentNumber = null;
+        pendingHalfPaidTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const halfPaidToPaidInput = document.getElementById('halfPaidToPaidInput');
+    if (halfPaidToPaidInput) {
+        halfPaidToPaidInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                halfPaidToPaidBtn.click();
+            }
+        });
+    }
 } 

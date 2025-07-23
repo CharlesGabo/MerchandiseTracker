@@ -67,14 +67,6 @@
                                     <option value="Cash">Cash</option>
                                 </select>
                             </div>
-                            <div class="col-md-2">
-                                <label for="filterOrderCount" class="form-label">Order Count</label>
-                                <select id="filterOrderCount" class="form-select">
-                                    <option value="">All</option>
-                                    <option value="single">Single Order</option>
-                                    <option value="multiple">Multiple Orders</option>
-                                </select>
-                            </div>
                         </form>
                     </div>
                 </div>
@@ -184,6 +176,7 @@
                                         <th>Timestamp</th>
                                         <th>Payment Status</th>
                                         <th>Claim Date</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="orderHistoryList">
@@ -213,6 +206,7 @@
                                         <th>Timestamp</th>
                                         <th>Payment Status</th>
                                         <th>Claim Date</th>
+                                        <th>Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="deletedOrdersList">
@@ -235,9 +229,9 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <p>Type <strong>'claimed'</strong> to confirm this order is claimed:</p>
+            <p>Type <strong>'Claimed'</strong> to confirm this order is claimed:</p>
             <input type="text" class="form-control" id="claimConfirmInput" autocomplete="off" />
-            <div class="invalid-feedback" id="claimConfirmInvalid" style="display:none;">Please type 'claimed' to confirm.</div>
+            <div class="invalid-feedback" id="claimConfirmInvalid" style="display:none;">Please type 'Claimed' to confirm.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -257,9 +251,9 @@
             <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
           </div>
           <div class="modal-body">
-            <p>Type <strong>'delete'</strong> to confirm deletion of this order from history:</p>
+            <p>Type <strong>'Delete'</strong> to confirm deletion of this order from history:</p>
             <input type="text" class="form-control" id="deleteConfirmInput" autocomplete="off" />
-            <div class="invalid-feedback" id="deleteConfirmInvalid" style="display:none;">Please type 'delete' to confirm.</div>
+            <div class="invalid-feedback" id="deleteConfirmInvalid" style="display:none;">Please type 'Delete' to confirm.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
@@ -269,6 +263,138 @@
       </div>
     </div>
     <!-- End Delete Confirmation Modal -->
+
+    <!-- Notify Buyer Confirmation Modal -->
+    <div class="modal fade" id="notifyBuyerModal" tabindex="-1" aria-labelledby="notifyBuyerModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="notifyBuyerModalLabel">Confirm Notify Buyer</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Notify Buyer'</strong> to proceed with notifying the buyer:</p>
+            <input type="text" class="form-control" id="notifyBuyerInput" autocomplete="off" />
+            <div class="invalid-feedback" id="notifyBuyerInvalid" style="display:none;">Please type 'Notify Buyer' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-warning" id="notifyBuyerBtn">Notify</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Notify Buyer Confirmation Modal -->
+
+    <!-- Revert Confirmation Modal -->
+    <div class="modal fade" id="revertConfirmModal" tabindex="-1" aria-labelledby="revertConfirmModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="revertConfirmModalLabel">Confirm Revert Order</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Revert'</strong> to confirm reverting this order to Orders section:</p>
+            <input type="text" class="form-control" id="revertConfirmInput" autocomplete="off" />
+            <div class="invalid-feedback" id="revertConfirmInvalid" style="display:none;">Please type 'Revert' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-info" id="revertConfirmBtn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Revert Confirmation Modal -->
+
+    <!-- Paid Confirmation Modal -->
+    <div class="modal fade" id="paidConfirmModal" tabindex="-1" aria-labelledby="paidConfirmModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="paidConfirmModalLabel">Confirm Mark as Paid</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Paid'</strong> to confirm marking this order as paid:</p>
+            <input type="text" class="form-control" id="paidConfirmInput" autocomplete="off" />
+            <div class="invalid-feedback" id="paidConfirmInvalid" style="display:none;">Please type 'Paid' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-success" id="paidConfirmBtn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Paid Confirmation Modal -->
+
+    <!-- Process Confirmation Modal -->
+    <div class="modal fade" id="processConfirmModal" tabindex="-1" aria-labelledby="processConfirmModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="processConfirmModalLabel">Confirm Process Order</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Process'</strong> to confirm moving this order to In-Process:</p>
+            <input type="text" class="form-control" id="processConfirmInput" autocomplete="off" />
+            <div class="invalid-feedback" id="processConfirmInvalid" style="display:none;">Please type 'Process' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" id="processConfirmBtn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Process Confirmation Modal -->
+
+    <!-- Deleted Revert Confirmation Modal -->
+    <div class="modal fade" id="deletedRevertConfirmModal" tabindex="-1" aria-labelledby="deletedRevertConfirmModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="deletedRevertConfirmModalLabel">Confirm Revert Deleted Order</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Revert'</strong> to confirm restoring this order to Orders section:</p>
+            <input type="text" class="form-control" id="deletedRevertConfirmInput" autocomplete="off" />
+            <div class="invalid-feedback" id="deletedRevertConfirmInvalid" style="display:none;">Please type 'Revert' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-info" id="deletedRevertConfirmBtn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Deleted Revert Confirmation Modal -->
+
+    <!-- Half-Paid to Paid Confirmation Modal -->
+    <div class="modal fade" id="halfPaidToPaidModal" tabindex="-1" aria-labelledby="halfPaidToPaidModalLabel" aria-hidden="true">
+      <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title" id="halfPaidToPaidModalLabel">Confirm Mark as Paid</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+          </div>
+          <div class="modal-body">
+            <p>Type <strong>'Paid'</strong> to confirm marking this order as paid:</p>
+            <input type="text" class="form-control" id="halfPaidToPaidInput" autocomplete="off" />
+            <div class="invalid-feedback" id="halfPaidToPaidInvalid" style="display:none;">Please type 'Paid' to confirm.</div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-success" id="halfPaidToPaidBtn">OK</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- End Half-Paid to Paid Confirmation Modal -->
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="script.js"></script>
