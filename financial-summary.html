@@ -44,6 +44,14 @@
             <div class="col-md-2">
                 <div class="card">
                     <div class="card-body">
+                        <h5 class="card-title">Total Unpaid</h5>
+                        <h3 id="totalUnpaid" class="text-danger">₱0.00 <span id="unpaidQty" class="fs-6 text-muted">(0)</span></h3>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
                         <h5 class="card-title">Paid Orders</h5>
                         <h3 id="paidOrders" class="text-primary">0</h3>
                     </div>
@@ -139,7 +147,7 @@
                     labels: ['Paid', 'Unpaid', 'Half Paid'],
                     datasets: [{
                         data: [0, 0, 0],
-                        backgroundColor: ['#28a745', '#ffc107', '#17a2b8']
+                        backgroundColor: ['#28a745', '#dc3545', '#ffc107']
                     }]
                 }
             });
@@ -327,6 +335,10 @@
         }
 
         function updateFinancialSummary() {
+            // Normalize all paymentStatus values before calculations
+            [...orders, ...inProcessOrders, ...orderHistory, ...deletedOrders].forEach(order => {
+                if (order && order.paymentStatus) order.paymentStatus = order.paymentStatus.toLowerCase().trim();
+            });
             const startDate = document.getElementById('startDate').value;
             const endDate = document.getElementById('endDate').value;
             let filteredOrders = orders;
@@ -362,8 +374,14 @@
                 .filter(order => order.paymentStatus === 'half-paid');
             const totalHalfPaid = halfPaidOrders.reduce((sum, order) => sum + ((order.hadInterest || order.paymentStatus === 'half-paid' ? (order.price + 10) : order.price) * order.quantity), 0);
             const halfPaidQty = halfPaidOrders.reduce((sum, order) => sum + order.quantity, 0);
+            // Calculate unpaid total and quantity
+            const unpaidOrdersArr = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+                .filter(order => order.paymentStatus === 'unpaid');
+            const totalUnpaid = unpaidOrdersArr.reduce((sum, order) => sum + (order.price * order.quantity), 0);
+            const unpaidQty = unpaidOrdersArr.reduce((sum, order) => sum + order.quantity, 0);
             document.getElementById('totalRevenue').textContent = formatCurrency(totalRevenue);
             document.getElementById('totalHalfPaid').innerHTML = `${formatCurrency(totalHalfPaid)} <span id="halfPaidQty" class="fs-6 text-muted">(${halfPaidQty})</span>`;
+            document.getElementById('totalUnpaid').innerHTML = `${formatCurrency(totalUnpaid)} <span id="unpaidQty" class="fs-6 text-muted">(${unpaidQty})</span>`;
             document.getElementById('paidOrders').textContent = paidOrders;
             document.getElementById('unpaidOrders').textContent = unpaidOrders;
             document.getElementById('inProcessOrders').textContent = inProcessCount;

@@ -168,6 +168,7 @@ function addOrder(event) {
         date,
         notified: false // New orders are not notified by default
     };
+    normalizePaymentStatus(order);
     orders.push(order);
     saveOrders();
     updateOrdersList();
@@ -1187,6 +1188,7 @@ function importAllOrdersFromExcel(event) {
                         if (row['Notified']) {
                             currentOrder.notified = row['Notified'].toString().toLowerCase() === 'yes';
                         }
+                        normalizePaymentStatus(currentOrder);
                     } else if (currentOrder) {
                         currentOrder.itemName += ', ' + row['Item'];
                     }
@@ -1587,3 +1589,20 @@ function markOrderAsNotified(studentNumber, timestamp) {
         saveOrders();
     }
 } 
+
+// Add a helper to normalize paymentStatus
+function normalizePaymentStatus(order) {
+    if (order.paymentStatus) {
+        order.paymentStatus = order.paymentStatus.toLowerCase().trim();
+    }
+}
+// Normalize on load from localStorage
+function loadOrdersFromStorage() {
+    orders = JSON.parse(localStorage.getItem('orders')) || [];
+    inProcessOrders = JSON.parse(localStorage.getItem('inProcessOrders')) || [];
+    orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
+    deletedOrders = JSON.parse(localStorage.getItem('deletedOrders')) || [];
+    [orders, inProcessOrders, orderHistory, deletedOrders].forEach(arr => arr.forEach(normalizePaymentStatus));
+}
+// Call this at the top of your script (after variable declarations)
+loadOrdersFromStorage(); 
