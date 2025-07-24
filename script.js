@@ -57,7 +57,8 @@ async function fetchFromGoogleSheets() {
                     paymentStatus: (row[5] && row[5].toLowerCase() === 'paid') ? 'paid' : 'unpaid', // Payment Status
                     timestamp: row[0] || '', // Timestamp (raw)
                     date: row[0], // Timestamp (for merging)
-                    formIndex: idx + 1 // 1-based index for order number
+                    formIndex: idx + 1, // 1-based index for order number
+                    notified: false // Initialize notified status
                 };
             });
 
@@ -164,7 +165,8 @@ function addOrder(event) {
         paymentMode,
         paymentStatus,
         timestamp,
-        date
+        date,
+        notified: false // New orders are not notified by default
     };
     orders.push(order);
     saveOrders();
@@ -506,9 +508,10 @@ function updateOrdersList() {
                         <button class="btn btn-sm btn-secondary" onclick="openRevertConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                             <i class="bi bi-arrow-left-circle"></i> Revert
                         </button>
-                        <button class="btn btn-sm btn-warning" onclick="openNotifyBuyerModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')" title="Notify Buyer">
-                            Notify
-                        </button>
+                        ${firstOrder.notified ?
+                            `<button class="btn btn-sm btn-success" onclick="openNotifyBuyerModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}', true)" title="Notify Again">Notified</button>` :
+                            `<button class="btn btn-sm btn-warning" onclick="openNotifyBuyerModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')" title="Notify Buyer">Notify</button>`
+                        }
                     </td>`;
                 }
                 row.innerHTML = cells;
@@ -1077,6 +1080,7 @@ function prepareOrdersForExport(orders, isHistory) {
             rowData['Payment Mode'] = idx === 0 ? (firstOrder.paymentMode || '-') : '';
             rowData['Timestamp'] = idx === 0 ? firstOrder.timestamp : '';
             rowData['Payment Status'] = idx === 0 ? firstOrder.paymentStatus : '';
+            rowData['Notified'] = idx === 0 ? (firstOrder.notified ? 'Yes' : 'No') : '';
             if (isHistory) {
                 rowData['Claim Date'] = idx === 0 ? (firstOrder.claimDate || '-') : '';
             }
@@ -1170,6 +1174,9 @@ function importAllOrdersFromExcel(event) {
                         if (row['Order No.']) {
                             currentOrder.formIndex = parseInt(row['Order No.'], 10);
                         }
+                        if (row['Notified']) {
+                            currentOrder.notified = row['Notified'].toString().toLowerCase() === 'yes';
+                        }
                     } else if (currentOrder) {
                         currentOrder.itemName += ', ' + row['Item'];
                     }
@@ -1223,7 +1230,7 @@ if (document.getElementById('importAllBtn')) {
     document.getElementById('importAllBtn').addEventListener('change', importAllOrdersFromExcel);
 } 
 
-function openNotifyBuyerModal(studentNumber, timestamp) {
+function openNotifyBuyerModal(studentNumber, timestamp, isAgain = false) {
     pendingNotifyStudentNumber = studentNumber;
     pendingNotifyTimestamp = timestamp;
     document.getElementById('notifyBuyerInput').value = '';
@@ -1233,6 +1240,17 @@ function openNotifyBuyerModal(studentNumber, timestamp) {
     const order = findOrder(orders) || findOrder(inProcessOrders) || findOrder(orderHistory) || findOrder(deletedOrders);
     document.getElementById('notifyBuyerEmail').value = order && order.email ? order.email : '';
     document.getElementById('notifyBuyerEmailInvalid').style.display = 'none';
+    // Change modal prompt if isAgain
+    const prompt = document.querySelector('#notifyBuyerModal .modal-body p');
+    if (isAgain) {
+        prompt.innerHTML = "Type <strong>'Notify Again'</strong> to notify the buyer again:";
+        document.getElementById('notifyBuyerBtn').textContent = 'Notify Again';
+        document.getElementById('notifyBuyerBtn').dataset.notifyAgain = 'true';
+    } else {
+        prompt.innerHTML = "Type <strong>'Notify Buyer'</strong> to proceed with notifying the buyer:";
+        document.getElementById('notifyBuyerBtn').textContent = 'Notify';
+        document.getElementById('notifyBuyerBtn').dataset.notifyAgain = '';
+    }
     const modal = new bootstrap.Modal(document.getElementById('notifyBuyerModal'));
     modal.show();
 }
@@ -1244,7 +1262,8 @@ if (notifyBuyerBtn) {
         const emailInput = document.getElementById('notifyBuyerEmail').value.trim();
         const emailInvalid = document.getElementById('notifyBuyerEmailInvalid');
         let valid = true;
-        if (input !== 'Notify Buyer') {
+        const isAgain = notifyBuyerBtn.dataset.notifyAgain === 'true';
+        if ((isAgain && input !== 'Notify Again') || (!isAgain && input !== 'Notify Buyer')) {
             invalidFeedback.style.display = 'block';
             valid = false;
         } else {
@@ -1275,6 +1294,8 @@ if (notifyBuyerBtn) {
             mode: "no-cors",
             body: formData
         }).then(() => {
+            markOrderAsNotified(studentNumber, order.timestamp);
+            updateOrdersList();
             showNotification("Order notification submitted!", "success");
         }).catch((err) => {
             showNotification("Failed to submit notification: " + err, "danger");
@@ -1545,3 +1566,13 @@ window.toggleEmailVisibility = function(emailId, email, btn) {
         btn.removeAttribute('data-email-toggle');
     }
 }; 
+
+// Add a helper to mark an order as notified
+function markOrderAsNotified(studentNumber, timestamp) {
+    const findOrder = arr => arr.find(o => o.studentNumber === studentNumber && o.timestamp === timestamp);
+    let order = findOrder(orders) || findOrder(inProcessOrders) || findOrder(orderHistory) || findOrder(deletedOrders);
+    if (order) {
+        order.notified = true;
+        saveOrders();
+    }
+} 
