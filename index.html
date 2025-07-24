@@ -90,30 +90,50 @@
 
         <div class="tab-content" id="orderTabsContent">
             <div class="tab-pane fade show active" id="orders" role="tabpanel" aria-labelledby="orders-tab">
-                <div class="card mt-3">
-                    <div class="card-body">
-                        <h5 class="card-title">Orders List</h5>
-                        <div class="table-responsive">
-                            <table class="table">
-                                <thead>
-                                    <tr>
-                                        <th>Order No.</th>
-                                        <th>Student Number</th>
-                                        <th>Student Name</th>
-                                        <th>Item</th>
-                                        <th>Quantity</th>
-                                        <th>Total</th>
-                                        <th>GCash Reference Number</th>
-                                        <th>Payment Mode</th>
-                                        <th>Timestamp</th>
-                                        <th>Payment Status</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="ordersList">
-                                    <!-- Orders will be populated here -->
-                                </tbody>
-                            </table>
+                <ul class="nav nav-tabs mb-3" id="ordersSubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="order-list-tab" data-bs-toggle="tab" data-bs-target="#order-list" type="button" role="tab" aria-controls="order-list" aria-selected="true">Order List</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="summary-tab" data-bs-toggle="tab" data-bs-target="#summary" type="button" role="tab" aria-controls="summary" aria-selected="false">Summary</button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="ordersSubTabsContent">
+                    <div class="tab-pane fade show active" id="order-list" role="tabpanel" aria-labelledby="order-list-tab">
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Orders List</h5>
+                                <div class="table-responsive">
+                                    <table class="table">
+                                        <thead>
+                                            <tr>
+                                                <th>Order No.</th>
+                                                <th>Student Number</th>
+                                                <th>Student Name</th>
+                                                <th>Item</th>
+                                                <th>Quantity</th>
+                                                <th>Total</th>
+                                                <th>GCash Reference Number</th>
+                                                <th>Payment Mode</th>
+                                                <th>Timestamp</th>
+                                                <th>Payment Status</th>
+                                                <th>Actions</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody id="ordersList">
+                                            <!-- Orders will be populated here -->
+                                        </tbody>
+                                    </table>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="tab-pane fade" id="summary" role="tabpanel" aria-labelledby="summary-tab">
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Summary</h5>
+                                <div id="ordersSummary" class="mb-4"><!-- Summary will be populated here --></div>
+                            </div>
                         </div>
                     </div>
                 </div>

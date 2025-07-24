@@ -205,6 +205,7 @@ let pendingNotifyStudentNumber = null;
 let pendingNotifyTimestamp = null;
 
 function updateOrdersList() {
+    updateOrdersSummary();
     const ordersList = document.getElementById('ordersList');
     const inProcessList = document.getElementById('inProcessList');
     const orderHistoryList = document.getElementById('orderHistoryList');
@@ -1606,3 +1607,130 @@ function loadOrdersFromStorage() {
 }
 // Call this at the top of your script (after variable declarations)
 loadOrdersFromStorage(); 
+
+// Update the summary section for Orders tab
+function updateOrdersSummary() {
+    const summaryDiv = document.getElementById('ordersSummary');
+    if (!summaryDiv) return;
+    // Filter out deleted orders
+    const deletedKeys = new Set(deletedOrders.map(order => `${order.studentNumber}_${order.timestamp}`));
+    const visibleOrders = orders.filter(order => !deletedKeys.has(`${order.studentNumber}_${order.timestamp}`));
+    // Define ISKOLEHIYO base items (case-insensitive, ignore size info)
+    const iskolehiyoBaseItems = [
+        'ISKOLEHIYO T-SHIRT V1.1',
+        'ISKOLEHIYO T-SHIRT V1.2',
+        'ISKOLEHIYO T-SHIRT V1.3',
+        'ISKOLEHIYO TOTE BAG V1.1',
+        'ISKOLEHIYO TOTE BAG V1.2',
+        'AIRPLANE PIN',
+        'REMOVE BEFORE FLIGHT TAG'
+    ];
+    // Define PAGLAOM base items (case-insensitive, ignore size info)
+    const paglaomBaseItems = [
+        'PAGLAOM V1.1 T-SHIRT',
+        'PAGLAOM V1.2 T-SHIRT',
+        'Hirono Airplane Sticker',
+        'Hirono Computer Enthusiasts Sticker',
+        'Hirono Uniform Sticker',
+        'Sticker Set A',
+        'Sticker Set B'
+    ];
+    // Helper to extract base name (removes size info in parentheses or after last space if it's a size)
+    function getBaseName(itemName) {
+        // Remove size in parentheses, e.g., (S), (M), (L), (XL), (XXL), etc.
+        let base = itemName.replace(/\s*\([^)]*\)\s*$/, '');
+        // Remove trailing size after space, e.g., 'PAGLAOM V1.1 T-SHIRT S'
+        base = base.replace(/\s+(S|M|L|XL|XXL|XS|2XL|3XL|4XL)$/i, '');
+        return base.trim();
+    }
+    // Group by item and division
+    const paglaomSummary = {};
+    const iskolehiyoSummary = {};
+    visibleOrders.forEach(order => {
+        // Split items if multiple in one order
+        const items = order.itemName.split(',').map(i => i.trim()).filter(i => i);
+        items.forEach(itemStr => {
+            let itemMatch = itemStr.match(/^(.*?)(?:\s*\((\d+)x\))?$/);
+            let rawName = itemMatch ? itemMatch[1].trim() : itemStr;
+            let quantity = itemMatch && itemMatch[2] ? parseInt(itemMatch[2]) : (order.quantity || 1);
+            let baseName = getBaseName(rawName);
+            // Extract size (in parentheses or as trailing word)
+            let size = null;
+            let parenMatch = rawName.match(/\(([^)]+)\)/);
+            if (parenMatch) {
+                size = parenMatch[1].trim();
+            } else {
+                let trailing = rawName.match(/\b(S|M|L|XL|XXL|XS|2XL|3XL|4XL)\b$/i);
+                if (trailing) size = trailing[1].toUpperCase();
+            }
+            // PAGLAOM base items always go to PAGLAOM
+            if (paglaomBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
+                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0, sizes: {} };
+                paglaomSummary[baseName].quantity += quantity;
+                if (/t-shirt/i.test(baseName) && size) {
+                    paglaomSummary[baseName].sizes[size] = (paglaomSummary[baseName].sizes[size] || 0) + quantity;
+                }
+            } else if (iskolehiyoBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
+                if (!iskolehiyoSummary[baseName]) iskolehiyoSummary[baseName] = { quantity: 0, sizes: {} };
+                iskolehiyoSummary[baseName].quantity += quantity;
+                if (/t-shirt/i.test(baseName) && size) {
+                    iskolehiyoSummary[baseName].sizes[size] = (iskolehiyoSummary[baseName].sizes[size] || 0) + quantity;
+                }
+            } else {
+                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0 };
+                paglaomSummary[baseName].quantity += quantity;
+            }
+        });
+    });
+    // Helper to build a summary table
+    function buildTable(title, summaryObj, paglaomBaseOrder = []) {
+        let html = `<h6 class='fw-bold mt-3 mb-2'>${title}</h6>`;
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th></tr></thead><tbody>';
+        const items = Object.keys(summaryObj);
+        let sortedItems;
+        if (title === 'PAGLAOM' && paglaomBaseOrder.length > 0) {
+            const baseOrdered = paglaomBaseOrder.filter(item => summaryObj[item]);
+            const others = items.filter(item => !baseOrdered.includes(item)).sort();
+            sortedItems = [...baseOrdered, ...others];
+        } else {
+            const tshirts = items.filter(item => /t-shirt/i.test(item)).sort();
+            const totebags = items.filter(item => /tote bag/i.test(item)).sort();
+            const others = items.filter(item => !tshirts.includes(item) && !totebags.includes(item)).sort();
+            sortedItems = [...tshirts, ...totebags, ...others];
+        }
+        sortedItems.forEach((item, idx) => {
+            if (/t-shirt/i.test(item)) {
+                // Dropdown for T-SHIRT: show total, expandable to show sizes
+                const collapseId = `${title.replace(/\s/g, '')}_tshirt_${idx}`;
+                const sizeMap = summaryObj[item].sizes || {};
+                const hasSizes = Object.keys(sizeMap).length > 0;
+                html += `<tr data-bs-toggle='collapse' data-bs-target='#${collapseId}' style='cursor:pointer;'>
+                            <td><b>${item}</b> <span class='ms-1'><i class='bi bi-caret-down-fill'></i></span></td>
+                            <td><b>${summaryObj[item].quantity}</b></td>
+                        </tr>`;
+                if (hasSizes) {
+                    // Order sizes as S, M, L, XL, 2XL, 3XL, 4XL, 5XL, then others
+                    const allSizes = Object.keys(sizeMap);
+                    const orderedSizes = [
+                        ...['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].filter(sz => allSizes.includes(sz)),
+                        ...allSizes.filter(sz => !['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].includes(sz)).sort()
+                    ];
+                    html += `<tr class='collapse' id='${collapseId}'><td colspan='2' style='padding:0;'>
+                                <table class='table table-sm mb-0'><tbody>`;
+                    orderedSizes.forEach(size => {
+                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size]}</td></tr>`;
+                    });
+                    html += `</tbody></table></td></tr>`;
+                }
+            } else {
+                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td></tr>`;
+            }
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+    let html = '';
+    html += buildTable('PAGLAOM', paglaomSummary, paglaomBaseItems);
+    html += buildTable('ISKOLEHIYO', iskolehiyoSummary);
+    summaryDiv.innerHTML = html;
+} 
