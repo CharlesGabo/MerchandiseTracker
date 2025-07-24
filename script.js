@@ -48,6 +48,7 @@ async function fetchFromGoogleSheets() {
                 return {
                     studentNumber: row[1] || '-', // Student Number
                     studentName: row[2], // Student Name
+                    email: row[4] || '', // Email (Column E)
                     itemName: row[6], // Order Items
                     quantity: 1, // Default to 1
                     price: parseFloat(row[7]) || 0, // Total Amount
@@ -482,6 +483,9 @@ function updateOrdersList() {
                     cells += `<td rowspan="${allItems.length}">${orderNo}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentNumber}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.studentName}</td>`;
+                    // Email Show/Hide button
+                    const emailId = `email-cell-${firstOrder.studentNumber.replace(/[^a-zA-Z0-9]/g, '')}-${firstOrder.timestamp.replace(/[^a-zA-Z0-9]/g, '')}`;
+                    cells += `<td rowspan="${allItems.length}"><button class='btn btn-sm btn-outline-primary' type='button' onclick="toggleEmailVisibility('${emailId}', '${firstOrder.email || '-'}', this)">Show</button><span id='${emailId}' style='display:none; margin-left:8px;'></span></td>`;
                 }
                 cells += `<td>${item.itemName}</td>`;
                 cells += `<td>${item.quantity}</td>`;
@@ -1065,6 +1069,7 @@ function prepareOrdersForExport(orders, isHistory) {
             }
             rowData['Student Number'] = idx === 0 ? firstOrder.studentNumber : '';
             rowData['Student Name'] = idx === 0 ? firstOrder.studentName : '';
+            rowData['Email'] = idx === 0 ? (firstOrder.email || '') : '';
             rowData['Item'] = item.itemName;
             rowData['Quantity'] = item.quantity;
             rowData['Total'] = idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price}` : '';
@@ -1149,6 +1154,7 @@ function importAllOrdersFromExcel(event) {
                         currentOrder = {
                             studentNumber: row['Student Number'],
                             studentName: row['Student Name'],
+                            email: row['Email'] === '-' ? '' : row['Email'],
                             itemName: row['Item'],
                             quantity: parseInt(row['Quantity']) || 1,
                             price: row['Total'] ? parseFloat(String(row['Total']).replace('₱', '')) || 0 : 0,
@@ -1230,17 +1236,48 @@ if (notifyBuyerBtn) {
     notifyBuyerBtn.addEventListener('click', function() {
         const input = document.getElementById('notifyBuyerInput').value.trim();
         const invalidFeedback = document.getElementById('notifyBuyerInvalid');
+        const emailInput = document.getElementById('notifyBuyerEmail').value.trim();
+        const emailInvalid = document.getElementById('notifyBuyerEmailInvalid');
+        let valid = true;
         if (input !== 'Notify Buyer') {
             invalidFeedback.style.display = 'block';
-            return;
+            valid = false;
+        } else {
+            invalidFeedback.style.display = 'none';
         }
-        invalidFeedback.style.display = 'none';
+        if (!emailInput || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailInput)) {
+            emailInvalid.style.display = 'block';
+            valid = false;
+        } else {
+            emailInvalid.style.display = 'none';
+        }
+        if (!valid) return;
+        // Find the order object using the pending student number and timestamp
+        const findOrder = arr => arr.find(o => o.studentNumber === pendingNotifyStudentNumber && o.timestamp === pendingNotifyTimestamp);
+        const order = findOrder(orders) || findOrder(inProcessOrders) || findOrder(orderHistory) || findOrder(deletedOrders);
+        const orderNo = order && order.formIndex ? order.formIndex.toString().padStart(4, '0') : '';
+        const studentNumber = order ? order.studentNumber : '';
+        const studentName = order ? order.studentName : '';
+        // Submit Google Form programmatically, including email
+        const formUrl = "https://docs.google.com/forms/d/e/1FAIpQLSdWGI6K4CHr0nmj5Yh40RfTlCF2yoeTE8wevqjC_Ig734knxw/formResponse";
+        const formData = new FormData();
+        formData.append("entry.707619360", orderNo);
+        formData.append("entry.1190463898", studentNumber);
+        formData.append("entry.1573165382", studentName);
+        formData.append("entry.2005843144", emailInput); // <-- Replace with your actual Email entry ID
+        fetch(formUrl, {
+            method: "POST",
+            mode: "no-cors",
+            body: formData
+        }).then(() => {
+            showNotification("Order notification submitted!", "success");
+        }).catch((err) => {
+            showNotification("Failed to submit notification: " + err, "danger");
+        });
         // Hide modal
         const modalEl = document.getElementById('notifyBuyerModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         modal.hide();
-        // Placeholder for notification logic
-        showNotification('Buyer has been notified.', 'warning');
         pendingNotifyStudentNumber = null;
         pendingNotifyTimestamp = null;
     });
@@ -1484,3 +1521,22 @@ if (halfPaidToPaidBtn) {
         });
     }
 } 
+
+// Add this function to the global scope
+window.toggleEmailVisibility = function(emailId, email, btn) {
+    const span = document.getElementById(emailId);
+    if (!span) return;
+    if (span.style.display === 'none') {
+        // Hide all other emails
+        document.querySelectorAll('[id^="email-cell-"]').forEach(el => { el.style.display = 'none'; });
+        document.querySelectorAll('button[data-email-toggle]').forEach(b => { b.textContent = 'Show'; });
+        span.textContent = email;
+        span.style.display = 'inline';
+        btn.textContent = 'Hide';
+        btn.setAttribute('data-email-toggle', 'true');
+    } else {
+        span.style.display = 'none';
+        btn.textContent = 'Show';
+        btn.removeAttribute('data-email-toggle');
+    }
+}; 

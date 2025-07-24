@@ -129,6 +129,7 @@
                                         <th>Order No.</th>
                                         <th>Student Number</th>
                                         <th>Student Name</th>
+                                        <th>Email</th>
                                         <th>Item</th>
                                         <th>Quantity</th>
                                         <th>Total</th>
@@ -274,8 +275,11 @@
           </div>
           <div class="modal-body">
             <p>Type <strong>'Notify Buyer'</strong> to proceed with notifying the buyer:</p>
-            <input type="text" class="form-control" id="notifyBuyerInput" autocomplete="off" />
+            <input type="text" class="form-control mb-2" id="notifyBuyerInput" autocomplete="off" placeholder="Type 'Notify Buyer' to confirm" />
             <div class="invalid-feedback" id="notifyBuyerInvalid" style="display:none;">Please type 'Notify Buyer' to confirm.</div>
+            <label for="notifyBuyerEmail" class="form-label mt-2">Recipient Email</label>
+            <input type="email" class="form-control" id="notifyBuyerEmail" placeholder="Enter recipient's email" autocomplete="off" />
+            <div class="invalid-feedback" id="notifyBuyerEmailInvalid" style="display:none;">Please enter a valid email address.</div>
           </div>
           <div class="modal-footer">
             <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
