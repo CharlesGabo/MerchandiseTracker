@@ -492,7 +492,17 @@ function updateOrdersList() {
                 cells += `<td>${item.itemName}</td>`;
                 cells += `<td>${item.quantity}</td>`;
                 if (idx === 0) {
-                    cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                    // Show interest for both half-paid and paid if hadInterest is set
+                    let totalCell = '';
+                    if (firstOrder.paymentStatus === 'half-paid' || firstOrder.hadInterest) {
+                        const interest = 10;
+                        const base = total;
+                        const sum = base + interest;
+                        totalCell = `${base}+${interest}<br><strong>${formatCurrency(sum)}</strong>`;
+                    } else {
+                        totalCell = formatCurrency(total);
+                    }
+                    cells += `<td rowspan="${allItems.length}">${totalCell}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
@@ -502,7 +512,7 @@ function updateOrdersList() {
                       : `<span class="badge ${statusClass}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`;
                     cells += `<td rowspan="${allItems.length}">${statusContent}</td>`;
                     cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'half-paid' ? ' disabled title="Pay in full before claiming"' : ''}>
+                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'half-paid' ? ' disabled title=\"Pay in full before claiming\"' : ''}>
                             <i class="bi bi-check-circle"></i> Claimed
                         </button>
                         <button class="btn btn-sm btn-secondary" onclick="openRevertConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
@@ -1528,6 +1538,7 @@ if (halfPaidToPaidBtn) {
             const order = inProcessOrders.find(order => order.studentNumber === pendingHalfPaidStudentNumber && order.timestamp === pendingHalfPaidTimestamp);
             if (order) {
                 order.paymentStatus = 'paid';
+                order.hadInterest = true; // Track that this order had interest
                 saveOrders();
                 updateOrdersList();
                 showNotification('Order marked as paid.', 'success');
