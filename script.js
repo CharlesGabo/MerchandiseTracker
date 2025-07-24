@@ -1452,6 +1452,32 @@ if (processConfirmBtn) {
         // Actually process the order
         if (pendingProcessStudentNumber && pendingProcessTimestamp) {
             markAsInProcess(pendingProcessStudentNumber, pendingProcessTimestamp);
+            // --- Google Form Submission ---
+            // Find the order object using the pending student number and timestamp
+            const findOrder = arr => arr.find(o => o.studentNumber === pendingProcessStudentNumber && o.timestamp === pendingProcessTimestamp);
+            const order = findOrder(orders) || findOrder(inProcessOrders) || findOrder(orderHistory) || findOrder(deletedOrders);
+            const orderNo = order && order.formIndex ? order.formIndex.toString().padStart(4, '0') : '';
+            const studentNumber = order ? order.studentNumber : '';
+            const studentName = order ? order.studentName : '';
+            const email = order ? order.email : '';
+            // Use your actual Google Form URL and entry IDs
+            const formUrl = "https://docs.google.com/forms/d/1JnJmQqWlYyiL1C5mJp1ejDNtd-OzBfxtYB8kQ32WkZw/formResponse";
+            const formData = new FormData();
+            formData.append("entry.1236088729", orderNo);
+            formData.append("entry.1808264540", studentNumber);
+            formData.append("entry.2073067807", studentName);
+            formData.append("entry.182002155", email); // <-- Replace with your actual Email entry ID
+            fetch(formUrl, {
+                method: "POST",
+                mode: "no-cors",
+                body: formData
+            }).then(() => {
+                // Optionally show a notification
+                showNotification("Order submitted to Google Form!", "success");
+            }).catch((err) => {
+                showNotification("Failed to submit to Google Form: " + err, "danger");
+            });
+            // --- End Google Form Submission ---
         }
         pendingProcessStudentNumber = null;
         pendingProcessTimestamp = null;
