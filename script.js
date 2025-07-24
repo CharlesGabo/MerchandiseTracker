@@ -1228,6 +1228,11 @@ function openNotifyBuyerModal(studentNumber, timestamp) {
     pendingNotifyTimestamp = timestamp;
     document.getElementById('notifyBuyerInput').value = '';
     document.getElementById('notifyBuyerInvalid').style.display = 'none';
+    // Prefill recipient email
+    const findOrder = arr => arr.find(o => o.studentNumber === studentNumber && o.timestamp === timestamp);
+    const order = findOrder(orders) || findOrder(inProcessOrders) || findOrder(orderHistory) || findOrder(deletedOrders);
+    document.getElementById('notifyBuyerEmail').value = order && order.email ? order.email : '';
+    document.getElementById('notifyBuyerEmailInvalid').style.display = 'none';
     const modal = new bootstrap.Modal(document.getElementById('notifyBuyerModal'));
     modal.show();
 }
