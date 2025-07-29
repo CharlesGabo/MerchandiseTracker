@@ -204,6 +204,10 @@ let pendingDeleteTimestamp = null;
 let pendingNotifyStudentNumber = null;
 let pendingNotifyTimestamp = null;
 
+// Variables for change payment status
+let pendingChangeStatusStudentNumber = null;
+let pendingChangeStatusTimestamp = null;
+
 function updateOrdersList() {
     updateOrdersSummary();
     const ordersList = document.getElementById('ordersList');
@@ -389,9 +393,19 @@ function updateOrdersList() {
                     cells += `<td>${item.itemName}</td>`;
                     cells += `<td>${item.quantity}</td>`;
                     if (idx === 0) {
-                        cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                        // Show interest for half-paid status and paid status that had interest
+                        let totalCell = '';
+                        if (firstOrder.paymentStatus === 'half-paid' || (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest)) {
+                            const interest = 10;
+                            const base = total;
+                            const sum = base + interest;
+                            totalCell = `${base}+${interest}<br><strong>${formatCurrency(sum)}</strong>`;
+                        } else {
+                            totalCell = formatCurrency(total);
+                        }
+                        cells += `<td rowspan="${allItems.length}">${totalCell}</td>`;
                         cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
-                        cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode}</td>`;
+                        cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                         cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                         cells += `<td rowspan="${allItems.length}">
                             <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : 'bg-warning'}">
@@ -494,9 +508,9 @@ function updateOrdersList() {
                 cells += `<td>${item.itemName}</td>`;
                 cells += `<td>${item.quantity}</td>`;
                 if (idx === 0) {
-                    // Show interest for both half-paid and paid if hadInterest is set
+                    // Show interest for half-paid status and paid status that came from half-paid
                     let totalCell = '';
-                    if (firstOrder.paymentStatus === 'half-paid' || firstOrder.hadInterest) {
+                    if (firstOrder.paymentStatus === 'half-paid' || (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest)) {
                         const interest = 10;
                         const base = total;
                         const sum = base + interest;
@@ -509,13 +523,15 @@ function updateOrdersList() {
                     cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                     let statusClass = firstOrder.paymentStatus === 'paid' ? 'bg-success' : (firstOrder.paymentStatus === 'half-paid' ? 'bg-warning' : 'bg-secondary');
-                    let statusContent = firstOrder.paymentStatus === 'half-paid'
-                      ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openHalfPaidToPaidModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`
-                      : `<span class="badge ${statusClass}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`;
+                    let statusContent = firstOrder.paymentStatus === 'unpaid' 
+                        ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openChangePaymentStatusModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span>`
+                        : (firstOrder.paymentStatus === 'half-paid'
+                            ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openHalfPaidToPaidModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`
+                            : `<span class="badge ${statusClass}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`);
                     cells += `<td rowspan="${allItems.length}">${statusContent}</td>`;
                     cells += `<td rowspan="${allItems.length}" class="action-buttons">
-                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'half-paid' ? ' disabled title=\"Pay in full before claiming\"' : ''}>
-                            <i class="bi bi-check-circle"></i> Claimed
+                        <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'unpaid' || firstOrder.paymentStatus === 'half-paid' ? ' disabled title=\"Must be fully paid before claiming\"' : ''}>
+                            <i class="bi bi-check-circle"></i> Claim
                         </button>
                         <button class="btn btn-sm btn-secondary" onclick="openRevertConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
                             <i class="bi bi-arrow-left-circle"></i> Revert
@@ -630,7 +646,17 @@ function updateOrdersList() {
                     cells += `<td>${item.itemName}</td>`;
                     cells += `<td>${item.quantity}</td>`;
                     if (idx === 0) {
-                        cells += `<td rowspan="${allItems.length}">${formatCurrency(total)}</td>`;
+                        // Show interest in history if the order had it
+                        let totalCell = '';
+                        if (firstOrder.hadInterest) {
+                            const interest = 10;
+                            const base = total;
+                            const sum = base + interest;
+                            totalCell = `${base}+${interest}<br><strong>${formatCurrency(sum)}</strong>`;
+                        } else {
+                            totalCell = formatCurrency(total);
+                        }
+                        cells += `<td rowspan="${allItems.length}">${totalCell}</td>`;
                         cells += `<td rowspan="${allItems.length}">${firstOrder.gcashReference || '-'}</td>`;
                         cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                         cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
@@ -759,7 +785,9 @@ document.addEventListener('DOMContentLoaded', function() {
 function markAllPaid(studentNumber, timestamp) {
     orders.forEach(order => {
         if (order.studentNumber === studentNumber && order.timestamp === timestamp) {
+            // When going from unpaid to paid directly, no interest should be added
             order.paymentStatus = 'paid';
+            order.hadInterest = false;
         }
     });
     saveOrders();
@@ -784,10 +812,7 @@ function markAsInProcess(studentNumber, timestamp) {
     );
     
     if (orderToMove) {
-        // If unpaid, set to half-paid
-        if (orderToMove.paymentStatus === 'unpaid') {
-            orderToMove.paymentStatus = 'half-paid';
-        }
+        // Keep the original payment status
         inProcessOrders.push(orderToMove);
         orders = orders.filter(order => 
             !(order.studentNumber === studentNumber && order.timestamp === timestamp)
@@ -807,18 +832,18 @@ function openClaimConfirmModal(studentNumber, timestamp) {
     modal.show();
 }
 
+// Update the markAsComplete function to use the confirmation modal
 function markAsComplete(studentNumber, timestamp) {
-    // Use modal instead of prompt
     openClaimConfirmModal(studentNumber, timestamp);
 }
 
-// Modal OK button handler
+// Add event listener for claim confirm button
 const claimConfirmBtn = document.getElementById('claimConfirmBtn');
 if (claimConfirmBtn) {
     claimConfirmBtn.addEventListener('click', function() {
         const input = document.getElementById('claimConfirmInput').value.trim();
         const invalidFeedback = document.getElementById('claimConfirmInvalid');
-        if (input !== 'Claimed') {
+        if (input !== 'Claim') {
             invalidFeedback.style.display = 'block';
             return;
         }
@@ -827,17 +852,19 @@ if (claimConfirmBtn) {
         const modalEl = document.getElementById('claimConfirmModal');
         const modal = bootstrap.Modal.getInstance(modalEl);
         modal.hide();
-        // Proceed with claim
+
+        // Process the claim
         if (pendingClaimStudentNumber && pendingClaimTimestamp) {
-            const orderToMove = inProcessOrders.find(order => 
+            const order = inProcessOrders.find(order => 
                 order.studentNumber === pendingClaimStudentNumber && order.timestamp === pendingClaimTimestamp
             );
-            if (orderToMove) {
+            if (order) {
                 // Add claim date to the order
                 const now = new Date();
-                orderToMove.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
-                // Move to order history instead of back to orders
-                orderHistory.push(orderToMove);
+                order.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
+                // Keep the hadInterest flag as is when moving to history
+                const orderForHistory = {...order};  // Create a copy to preserve all properties
+                orderHistory.push(orderForHistory);
                 inProcessOrders = inProcessOrders.filter(order => 
                     !(order.studentNumber === pendingClaimStudentNumber && order.timestamp === pendingClaimTimestamp)
                 );
@@ -849,7 +876,8 @@ if (claimConfirmBtn) {
         pendingClaimStudentNumber = null;
         pendingClaimTimestamp = null;
     });
-    // Allow pressing Enter in the input to trigger the OK button
+
+    // Allow pressing Enter in the input to trigger the button
     const claimConfirmInput = document.getElementById('claimConfirmInput');
     if (claimConfirmInput) {
         claimConfirmInput.addEventListener('keydown', function(e) {
@@ -885,7 +913,13 @@ function revertHistoryOrderToInProcess(studentNumber, timestamp) {
     const idx = orderHistory.findIndex(order => order.studentNumber === studentNumber && order.timestamp === timestamp);
     if (idx !== -1) {
         const [order] = orderHistory.splice(idx, 1);
-        order.paymentStatus = 'half-paid';
+        // Keep the original payment status and interest state
+        if (order.hadInterest) {
+            order.paymentStatus = 'paid';  // If it had interest, it must have been paid
+        } else {
+            order.paymentStatus = 'paid';  // If no interest, keep it as paid without interest
+            order.hadInterest = false;  // Ensure hadInterest remains false
+        }
         inProcessOrders.push(order);
         saveOrders();
         updateOrdersList();
@@ -1760,3 +1794,132 @@ function updateOrdersSummary() {
     html += buildTable('ISKOLEHIYO', iskolehiyoSummary);
     summaryDiv.innerHTML = html;
 } 
+
+function openChangePaymentStatusModal(studentNumber, timestamp) {
+    pendingChangeStatusStudentNumber = studentNumber;
+    pendingChangeStatusTimestamp = timestamp;
+    const modal = new bootstrap.Modal(document.getElementById('changePaymentStatusModal'));
+    modal.show();
+}
+
+function changePaymentStatus(studentNumber, timestamp, newStatus) {
+    const order = inProcessOrders.find(order => 
+        order.studentNumber === studentNumber && order.timestamp === timestamp
+    );
+    if (order) {
+        const oldStatus = order.paymentStatus;
+        
+        // If changing to half-paid, set hadInterest
+        if (newStatus === 'half-paid') {
+            order.hadInterest = true;
+        }
+        // If changing from half-paid to paid, keep hadInterest
+        // If changing from unpaid to paid, no interest
+        else if (newStatus === 'paid') {
+            if (oldStatus !== 'half-paid') {
+                order.hadInterest = false;
+            }
+        }
+        // If changing to unpaid, remove hadInterest
+        else if (newStatus === 'unpaid') {
+            order.hadInterest = false;
+        }
+        
+        order.paymentStatus = newStatus;
+        saveOrders();
+        updateOrdersList();
+        showNotification(`Order marked as ${newStatus.replace('-', ' ')}.`, 'success');
+    }
+}
+
+// Add event listener for change payment status button
+const changePaymentStatusBtn = document.getElementById('changePaymentStatusBtn');
+if (changePaymentStatusBtn) {
+    changePaymentStatusBtn.addEventListener('click', function() {
+        const input = document.getElementById('changePaymentStatusInput').value.trim();
+        const invalidFeedback = document.getElementById('changePaymentStatusInvalid');
+        if (input !== 'Confirm') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+
+        // Hide modal
+        const modalEl = document.getElementById('changePaymentStatusModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+
+        // Get selected status and change it
+        const newStatus = document.getElementById('paymentStatusSelect').value;
+        if (pendingChangeStatusStudentNumber && pendingChangeStatusTimestamp) {
+            changePaymentStatus(pendingChangeStatusStudentNumber, pendingChangeStatusTimestamp, newStatus);
+        }
+
+        pendingChangeStatusStudentNumber = null;
+        pendingChangeStatusTimestamp = null;
+    });
+
+    // Allow pressing Enter in the input to trigger the button
+    const changePaymentStatusInput = document.getElementById('changePaymentStatusInput');
+    if (changePaymentStatusInput) {
+        changePaymentStatusInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                changePaymentStatusBtn.click();
+            }
+        });
+    }
+} 
+
+function openClaimToHistoryModal(studentNumber, timestamp) {
+    pendingClaimToHistoryStudentNumber = studentNumber;
+    pendingClaimToHistoryTimestamp = timestamp;
+    const modal = new bootstrap.Modal(document.getElementById('claimToHistoryModal'));
+    modal.show();
+}
+
+// Add event listener for claim to history button
+const claimToHistoryBtn = document.getElementById('claimToHistoryBtn');
+if (claimToHistoryBtn) {
+    claimToHistoryBtn.addEventListener('click', function() {
+        const input = document.getElementById('claimToHistoryInput').value.trim();
+        const invalidFeedback = document.getElementById('claimToHistoryInvalid');
+        if (input !== 'Move') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('claimToHistoryModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Move the order to history
+        if (pendingClaimToHistoryStudentNumber && pendingClaimToHistoryTimestamp) {
+            const orderToMove = inProcessOrders.find(order => 
+                order.studentNumber === pendingClaimToHistoryStudentNumber && order.timestamp === pendingClaimToHistoryTimestamp
+            );
+            if (orderToMove) {
+                orderHistory.push(orderToMove);
+                inProcessOrders = inProcessOrders.filter(order => 
+                    !(order.studentNumber === pendingClaimToHistoryStudentNumber && order.timestamp === pendingClaimToHistoryTimestamp)
+                );
+                saveOrders();
+                updateOrdersList();
+                showNotification('Order moved to history', 'success');
+            }
+        }
+        pendingClaimToHistoryStudentNumber = null;
+        pendingClaimToHistoryTimestamp = null;
+    });
+
+    // Allow pressing Enter in the input to trigger the button
+    const claimToHistoryInput = document.getElementById('claimToHistoryInput');
+    if (claimToHistoryInput) {
+        claimToHistoryInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                claimToHistoryBtn.click();
+            }
+        });
+    }
+}

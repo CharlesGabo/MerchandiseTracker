@@ -243,25 +243,60 @@
 
     <!-- Claim Confirmation Modal -->
     <div class="modal fade" id="claimConfirmModal" tabindex="-1" aria-labelledby="claimConfirmModalLabel" aria-hidden="true">
-      <div class="modal-dialog modal-dialog-centered">
-        <div class="modal-content">
-          <div class="modal-header">
-            <h5 class="modal-title" id="claimConfirmModalLabel">Confirm Order Claimed</h5>
-            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-          </div>
-          <div class="modal-body">
-            <p>Type <strong>'Claimed'</strong> to confirm this order is claimed:</p>
-            <input type="text" class="form-control" id="claimConfirmInput" autocomplete="off" />
-            <div class="invalid-feedback" id="claimConfirmInvalid" style="display:none;">Please type 'Claimed' to confirm.</div>
-          </div>
-          <div class="modal-footer">
-            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-            <button type="button" class="btn btn-primary" id="claimConfirmBtn">OK</button>
-          </div>
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="claimConfirmModalLabel">Confirm Claim</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="claimConfirmInput" class="form-label">Type "Claim" to confirm:</label>
+                        <input type="text" class="form-control" id="claimConfirmInput">
+                        <div class="invalid-feedback" id="claimConfirmInvalid">
+                            Please type "Claim" to proceed
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="claimConfirmBtn">Confirm Claim</button>
+                </div>
+            </div>
         </div>
-      </div>
     </div>
-    <!-- End Claim Confirmation Modal -->
+
+    <!-- Change Payment Status Modal -->
+    <div class="modal fade" id="changePaymentStatusModal" tabindex="-1" aria-labelledby="changePaymentStatusModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="changePaymentStatusModalLabel">Change Payment Status</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="paymentStatusSelect" class="form-label">Select New Status:</label>
+                        <select class="form-select" id="paymentStatusSelect">
+                            <option value="half-paid">Half Paid</option>
+                            <option value="paid">Paid</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="changePaymentStatusInput" class="form-label">Type "Confirm" to proceed:</label>
+                        <input type="text" class="form-control" id="changePaymentStatusInput">
+                        <div class="invalid-feedback" id="changePaymentStatusInvalid">
+                            Please type "Confirm" to proceed
+                        </div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="button" class="btn btn-primary" id="changePaymentStatusBtn">Change Status</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- Delete Confirmation Modal -->
     <div class="modal fade" id="deleteConfirmModal" tabindex="-1" aria-labelledby="deleteConfirmModalLabel" aria-hidden="true">
