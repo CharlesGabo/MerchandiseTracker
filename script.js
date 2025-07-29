@@ -219,9 +219,19 @@ function updateOrdersList() {
     if (orderHistoryList) orderHistoryList.innerHTML = '';
     if (deletedOrdersList) deletedOrdersList.innerHTML = '';
     
-    // Filter out orders that are present in deletedOrders
-    const deletedKeys = new Set(deletedOrders.map(order => `${order.studentNumber}_${order.timestamp}`));
-    const visibleOrders = orders.filter(order => !deletedKeys.has(`${order.studentNumber}_${order.timestamp}`));
+    // Filter out orders that are present in other sections
+    const otherSectionKeys = {
+        deleted: new Set(deletedOrders.map(order => `${order.studentNumber}_${order.timestamp}`)),
+        inProcess: new Set(inProcessOrders.map(order => `${order.studentNumber}_${order.timestamp}`)),
+        history: new Set(orderHistory.map(order => `${order.studentNumber}_${order.timestamp}`))
+    };
+    
+    const visibleOrders = orders.filter(order => {
+        const key = `${order.studentNumber}_${order.timestamp}`;
+        return !otherSectionKeys.deleted.has(key) && 
+               !otherSectionKeys.inProcess.has(key) && 
+               !otherSectionKeys.history.has(key);
+    });
 
     // First, group orders by student number to identify same students
     const studentGroups = {};
@@ -1237,8 +1247,23 @@ function importAllOrdersFromExcel(event) {
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet);
                 if (!jsonData.length) return;
+
+                // Helper function to check if an order exists in any section
+                function orderExistsInSection(order, section) {
+                    return section.some(existingOrder => 
+                        existingOrder.studentNumber === order.studentNumber && 
+                        existingOrder.timestamp === order.timestamp
+                    );
+                }
+
                 if (sheetName.toLowerCase().includes('orders') && sheetName.toLowerCase() === 'orders') {
-                    orders = processSheet(jsonData, false);
+                    const processedOrders = processSheet(jsonData, false);
+                    // Filter out orders that exist in other sections
+                    orders = processedOrders.filter(order => 
+                        !orderExistsInSection(order, inProcessOrders) &&
+                        !orderExistsInSection(order, orderHistory) &&
+                        !orderExistsInSection(order, deletedOrders)
+                    );
                     importedAny = true;
                 } else if (sheetName.toLowerCase().includes('in-process')) {
                     inProcessOrders = processSheet(jsonData, false);
