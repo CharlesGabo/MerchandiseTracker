@@ -930,26 +930,15 @@ function updateOrdersList() {
                         cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                         cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                         cells += `<td rowspan="${allItems.length}">
-                            <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : 'bg-warning'}">
-                                ${firstOrder.paymentStatus}
+                            <span class="badge ${firstOrder.paymentStatus === 'paid' ? 'bg-success' : (firstOrder.paymentStatus === 'half-paid' ? 'bg-warning' : 'bg-secondary')} clickable" style="cursor:pointer;" onclick="openChangePaymentStatusModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                ${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}
                             </span>
                         </td>`;
                         cells += `<td rowspan="${allItems.length}">
                             <div class="btn-group">
-                                ${firstOrder.paymentStatus === 'unpaid' ? 
-                                    `<button class="btn btn-sm btn-success" onclick="openPaidConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                        <i class="bi bi-check-circle"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-primary" onclick="openProcessConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                        <i class="bi bi-arrow-right-circle"></i>
-                                    </button>` :
-                                    `<button class="btn btn-sm btn-warning" onclick="markAllUnpaid('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                        <i class="bi bi-x-circle"></i>
-                                    </button>
-                                    <button class="btn btn-sm btn-primary" onclick="openProcessConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
-                                        <i class="bi bi-arrow-right-circle"></i>
-                                    </button>`
-                                }
+                                <button class="btn btn-sm btn-primary" onclick="openProcessConfirmModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">
+                                    <i class="bi bi-arrow-right-circle"></i>
+                                </button>
                                 <button class="btn btn-sm btn-danger" onclick="deleteOrderFromOrders('${firstOrder.studentNumber}', '${firstOrder.timestamp}')" title="Delete Order">
                                     <i class="bi bi-trash"></i>
                                 </button>
@@ -2488,10 +2477,16 @@ function openChangePaymentStatusModal(studentNumber, timestamp) {
     pendingChangeStatusStudentNumber = studentNumber;
     pendingChangeStatusTimestamp = timestamp;
     
-    // Find the current order to get its payment status
-    const order = inProcessOrders.find(order => 
+    // Find the current order to get its payment status (check both orders and inProcessOrders)
+    let order = inProcessOrders.find(order => 
         order.studentNumber === studentNumber && order.timestamp === timestamp
     );
+    
+    if (!order) {
+        order = orders.find(order => 
+            order.studentNumber === studentNumber && order.timestamp === timestamp
+        );
+    }
     
     if (order) {
         // Pre-select the current status in the dropdown
@@ -2530,9 +2525,17 @@ function openHalfPaidToPaidModal(studentNumber, timestamp) {
 }
 
 function changePaymentStatus(studentNumber, timestamp, newStatus) {
-    const order = inProcessOrders.find(order => 
+    // Find the order in both orders and inProcessOrders arrays
+    let order = inProcessOrders.find(order => 
         order.studentNumber === studentNumber && order.timestamp === timestamp
     );
+    
+    if (!order) {
+        order = orders.find(order => 
+            order.studentNumber === studentNumber && order.timestamp === timestamp
+        );
+    }
+    
     if (order) {
         const oldStatus = order.paymentStatus;
         

@@ -212,7 +212,11 @@
                     itemSummary[itemName].totalOrders += 1;
                     if (order.paymentStatus === 'paid') {
                         itemSummary[itemName].paidQuantity += quantity;
-                        itemSummary[itemName].totalRevenue += order.price * quantity;
+                        const paidAmount = order.hadInterest ? (order.price + 10) : order.price;
+                        itemSummary[itemName].totalRevenue += paidAmount * quantity;
+                    } else if (order.paymentStatus === 'half-paid') {
+                        itemSummary[itemName].paidQuantity += quantity;
+                        itemSummary[itemName].totalRevenue += (200 + 10) * quantity;
                     } else if (order.paymentStatus === 'unpaid') {
                         itemSummary[itemName].unpaidQuantity += quantity;
                     } else {
@@ -376,7 +380,7 @@
             // Calculate half-paid total and quantity
             const halfPaidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
                 .filter(order => order.paymentStatus === 'half-paid');
-            const totalHalfPaid = halfPaidOrders.reduce((sum, order) => sum + ((order.price + 10) * order.quantity), 0);
+            const totalHalfPaid = halfPaidOrders.reduce((sum, order) => sum + ((200 + 10) * order.quantity), 0);
             const halfPaidQty = halfPaidOrders.reduce((sum, order) => sum + order.quantity, 0);
             // Calculate unpaid total and quantity
             const unpaidOrdersArr = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
@@ -407,20 +411,50 @@
                 .reduce((sum, order) => sum + (order.price * order.quantity), 0);
             const halfPaidAmount = allOrders
                 .filter(order => order.paymentStatus === 'half-paid')
-                .reduce((sum, order) => sum + ((order.price + 10) * order.quantity), 0);
+                .reduce((sum, order) => sum + ((200 + 10) * order.quantity), 0);
             paymentStatusChart.data.datasets[0].data = [paidAmount, unpaidAmount, halfPaidAmount];
             paymentStatusChart.update();
             // Payment Mode Chart
             const gcashAmount = allOrders
                 .filter(order => order.paymentMode.toLowerCase().includes('gcash'))
-                .reduce((sum, order) => sum + ((order.hadInterest ? (order.price + 10) : order.price) * order.quantity), 0);
+                .reduce((sum, order) => {
+                    let amount;
+                    if (order.paymentStatus === 'paid') {
+                        amount = order.hadInterest ? (order.price + 10) : order.price;
+                    } else if (order.paymentStatus === 'half-paid') {
+                        amount = 200 + 10;
+                    } else {
+                        amount = order.price;
+                    }
+                    return sum + (amount * order.quantity);
+                }, 0);
             const cashAmount = allOrders
                 .filter(order => order.paymentMode.toLowerCase().includes('cash'))
-                .reduce((sum, order) => sum + ((order.hadInterest ? (order.price + 10) : order.price) * order.quantity), 0);
+                .reduce((sum, order) => {
+                    let amount;
+                    if (order.paymentStatus === 'paid') {
+                        amount = order.hadInterest ? (order.price + 10) : order.price;
+                    } else if (order.paymentStatus === 'half-paid') {
+                        amount = 200 + 10;
+                    } else {
+                        amount = order.price;
+                    }
+                    return sum + (amount * order.quantity);
+                }, 0);
             const otherAmount = allOrders
                 .filter(order => !order.paymentMode.toLowerCase().includes('gcash') && 
                                !order.paymentMode.toLowerCase().includes('cash'))
-                .reduce((sum, order) => sum + ((order.hadInterest ? (order.price + 10) : order.price) * order.quantity), 0);
+                .reduce((sum, order) => {
+                    let amount;
+                    if (order.paymentStatus === 'paid') {
+                        amount = order.hadInterest ? (order.price + 10) : order.price;
+                    } else if (order.paymentStatus === 'half-paid') {
+                        amount = 200 + 10;
+                    } else {
+                        amount = order.price;
+                    }
+                    return sum + (amount * order.quantity);
+                }, 0);
             paymentModeChart.data.datasets[0].data = [gcashAmount, cashAmount, otherAmount];
             paymentModeChart.update();
             // Build and store item summary globally, then update table
@@ -454,7 +488,11 @@
                 ordersByDate[date].totalOrders++;
                 if (order.paymentStatus === 'paid') {
                     ordersByDate[date].paidOrders++;
-                    ordersByDate[date].totalRevenue += order.price * order.quantity;
+                    const paidAmount = order.hadInterest ? (order.price + 10) : order.price;
+                    ordersByDate[date].totalRevenue += paidAmount * order.quantity;
+                } else if (order.paymentStatus === 'half-paid') {
+                    ordersByDate[date].paidOrders++;
+                    ordersByDate[date].totalRevenue += (200 + 10) * order.quantity;
                 } else if (order.paymentStatus === 'unpaid') {
                     ordersByDate[date].unpaidOrders++;
                 } else {
@@ -520,8 +558,15 @@
                     itemNames.forEach(name => {
                         const baseCost = getItemPrice(name);
                         if (o.paymentStatus === 'paid') { 
-                            profit += baseCost * o.quantity; 
+                            // For paid orders, use original price + 10 pesos if had interest
+                            const paidAmount = o.hadInterest ? (baseCost + 10) : baseCost;
+                            profit += paidAmount * o.quantity; 
                             paid++; 
+                        }
+                        else if (o.paymentStatus === 'half-paid') {
+                            // For half-paid orders, use temporary price of 200 + 10 pesos
+                            profit += (200 + 10) * o.quantity;
+                            paid++;
                         }
                         else if (o.paymentStatus === 'unpaid') { 
                             unpaid += baseCost * o.quantity; 
@@ -569,8 +614,15 @@
                         itemNames.forEach(name => {
                             const baseCost = getItemPrice(name);
                             if (o.paymentStatus === 'paid') { 
-                                wProfit += baseCost * o.quantity; 
+                                // For paid orders, use original price + 10 pesos if had interest
+                                const paidAmount = o.hadInterest ? (baseCost + 10) : baseCost;
+                                wProfit += paidAmount * o.quantity; 
                                 wPaid++; 
+                            }
+                            else if (o.paymentStatus === 'half-paid') {
+                                // For half-paid orders, use temporary price of 200 + 10 pesos
+                                wProfit += (200 + 10) * o.quantity;
+                                wPaid++;
                             }
                             else if (o.paymentStatus === 'unpaid') { 
                                 wUnpaid += baseCost * o.quantity; 
@@ -614,8 +666,21 @@
                             let orderClone = { ...order, displayItemName: name };
                             items[baseName].orders.push(orderClone);
                             const baseCost = getItemPrice(name);
-                            if (order.paymentStatus === 'paid') { items[baseName].profit += baseCost * order.quantity; items[baseName].paid++; }
-                            else if (order.paymentStatus === 'unpaid') { items[baseName].unpaid += baseCost * order.quantity; items[baseName].unpaidCount++; }
+                            if (order.paymentStatus === 'paid') { 
+                                // For paid orders, use original price + 10 pesos if had interest
+                                const paidAmount = order.hadInterest ? (baseCost + 10) : baseCost;
+                                items[baseName].profit += paidAmount * order.quantity; 
+                                items[baseName].paid++; 
+                            }
+                            else if (order.paymentStatus === 'half-paid') {
+                                // For half-paid orders, use temporary price of 200 + 10 pesos
+                                items[baseName].profit += (200 + 10) * order.quantity;
+                                items[baseName].paid++;
+                            }
+                            else if (order.paymentStatus === 'unpaid') { 
+                                items[baseName].unpaid += baseCost * order.quantity; 
+                                items[baseName].unpaidCount++; 
+                            }
                             items[baseName].count++;
                         });
                     });
@@ -661,12 +726,30 @@
                         // Fill in the item details div
                         const itemDetailsDiv = itemDiv.children[1];
                         // Transactions table
-                        let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Base Cost</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
+                        let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Price</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
                         itemOrders.forEach(o => {
-                            const itemPrice = getItemPrice(o.displayItemName);
+                            const basePrice = getItemPrice(o.displayItemName);
+                            let displayPrice, priceDescription;
+                            
+                            if (o.paymentStatus === 'paid') {
+                                if (o.hadInterest) {
+                                    displayPrice = basePrice + 10;
+                                    priceDescription = `${formatCurrency(basePrice)} + ₱10 interest = ${formatCurrency(displayPrice)}`;
+                                } else {
+                                    displayPrice = basePrice;
+                                    priceDescription = formatCurrency(displayPrice);
+                                }
+                            } else if (o.paymentStatus === 'half-paid') {
+                                displayPrice = 200 + 10;
+                                priceDescription = `₱200 temporary + ₱10 = ${formatCurrency(displayPrice)}`;
+                            } else {
+                                displayPrice = basePrice;
+                                priceDescription = formatCurrency(displayPrice);
+                            }
+                            
                             const detectedSize = extractSizeFromItemName(o.displayItemName);
-                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${itemPrice}`);
-                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td>${formatCurrency(itemPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
+                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${displayPrice}`);
+                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td title="${priceDescription}">${formatCurrency(displayPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
                         });
                         table += '</tbody></table></div>';
                         itemDetailsDiv.innerHTML = table;
