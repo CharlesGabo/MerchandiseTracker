@@ -265,22 +265,59 @@ function updateInProcessSummary() {
                 if (trailing) size = trailing[1].toUpperCase();
             }
 
+            // Create student info object
+            const studentInfo = {
+                studentNumber: order.studentNumber,
+                studentName: order.studentName,
+                quantity: quantity,
+                paymentStatus: order.paymentStatus,
+                timestamp: order.timestamp
+            };
+
             // PAGLAOM base items always go to PAGLAOM
             if (paglaomBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    paglaomSummary[baseName].sizes[size] = (paglaomSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!paglaomSummary[baseName].sizes[size]) {
+                        paglaomSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    paglaomSummary[baseName].sizes[size].quantity += quantity;
+                    paglaomSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else if (iskolehiyoBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!iskolehiyoSummary[baseName]) iskolehiyoSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!iskolehiyoSummary[baseName]) {
+                    iskolehiyoSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 iskolehiyoSummary[baseName].quantity += quantity;
+                iskolehiyoSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    iskolehiyoSummary[baseName].sizes[size] = (iskolehiyoSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!iskolehiyoSummary[baseName].sizes[size]) {
+                        iskolehiyoSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    iskolehiyoSummary[baseName].sizes[size].quantity += quantity;
+                    iskolehiyoSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0 };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0,
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
             }
         });
     });
@@ -288,7 +325,7 @@ function updateInProcessSummary() {
     // Helper to build a summary table
     function buildTable(title, summaryObj, paglaomBaseOrder = []) {
         let html = `<h6 class='fw-bold mt-3 mb-2'>${title}</h6>`;
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th><th>Students</th></tr></thead><tbody>';
         const items = Object.keys(summaryObj);
         let sortedItems;
         if (title === 'PAGLAOM' && paglaomBaseOrder.length > 0) {
@@ -301,15 +338,44 @@ function updateInProcessSummary() {
             const others = items.filter(item => !tshirts.includes(item) && !totebags.includes(item)).sort();
             sortedItems = [...tshirts, ...totebags, ...others];
         }
+        
         sortedItems.forEach((item, idx) => {
+            const itemStudents = summaryObj[item].students || [];
+            const uniqueStudents = itemStudents.length;
+            
             if (/t-shirt/i.test(item)) {
                 // Dropdown for T-SHIRT: show total, expandable to show sizes
                 const collapseId = `${title.replace(/\s/g, '')}_inprocess_tshirt_${idx}`;
                 const sizeMap = summaryObj[item].sizes || {};
                 const hasSizes = Object.keys(sizeMap).length > 0;
+                
+                // Create student dropdown for main item
+                const studentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
                 html += `<tr data-bs-toggle='collapse' data-bs-target='#${collapseId}' style='cursor:pointer;'>
                             <td><b>${item}</b> <span class='ms-1'><i class='bi bi-caret-down-fill'></i></span></td>
                             <td><b>${summaryObj[item].quantity}</b></td>
+                            <td>${studentDropdownHtml}</td>
                         </tr>`;
                 if (hasSizes) {
                     // Order sizes as S, M, L, XL, 2XL, 3XL, 4XL, 5XL, then others
@@ -318,15 +384,64 @@ function updateInProcessSummary() {
                         ...['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].filter(sz => allSizes.includes(sz)),
                         ...allSizes.filter(sz => !['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].includes(sz)).sort()
                     ];
-                    html += `<tr class='collapse' id='${collapseId}'><td colspan='2' style='padding:0;'>
+                    html += `<tr class='collapse' id='${collapseId}'><td colspan='3' style='padding:0;'>
                                 <table class='table table-sm mb-0'><tbody>`;
                     orderedSizes.forEach(size => {
-                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size]}</td></tr>`;
+                        const sizeStudents = sizeMap[size].students || [];
+                        const sizeUniqueStudents = sizeStudents.length;
+                        
+                        // Create student dropdown for size
+                        const sizeStudentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}_${size}`;
+                        let sizeStudentDropdownHtml = '';
+                        if (sizeStudents.length > 0) {
+                            sizeStudentDropdownHtml = `<button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${sizeStudentDropdownId}">
+                                ${sizeUniqueStudents} student${sizeUniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                            </button>
+                            <div class="collapse mt-2" id="${sizeStudentDropdownId}">
+                                <div class="card card-body p-2">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                            sizeStudents.forEach(student => {
+                                const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                                  student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                                sizeStudentDropdownHtml += `<tr>
+                                    <td>${student.studentName} (${student.studentNumber})</td>
+                                    <td>${student.quantity}</td>
+                                    <td class="${statusClass}">${student.paymentStatus}</td>
+                                </tr>`;
+                            });
+                            sizeStudentDropdownHtml += `</tbody></table></div></div>`;
+                        }
+                        
+                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size].quantity}</td><td>${sizeStudentDropdownHtml}</td></tr>`;
                     });
                     html += `</tbody></table></td></tr>`;
                 }
             } else {
-                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td></tr>`;
+                // Create student dropdown for non-t-shirt items
+                const studentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
+                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td><td>${studentDropdownHtml}</td></tr>`;
             }
         });
         html += '</tbody></table></div>';
@@ -407,22 +522,60 @@ function updateHistoryOrdersSummary() {
                 if (trailing) size = trailing[1].toUpperCase();
             }
 
+            // Create student info object
+            const studentInfo = {
+                studentNumber: order.studentNumber,
+                studentName: order.studentName,
+                quantity: quantity,
+                paymentStatus: order.paymentStatus,
+                timestamp: order.timestamp,
+                claimDate: order.claimDate
+            };
+
             // PAGLAOM base items always go to PAGLAOM
             if (paglaomBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    paglaomSummary[baseName].sizes[size] = (paglaomSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!paglaomSummary[baseName].sizes[size]) {
+                        paglaomSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    paglaomSummary[baseName].sizes[size].quantity += quantity;
+                    paglaomSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else if (iskolehiyoBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!iskolehiyoSummary[baseName]) iskolehiyoSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!iskolehiyoSummary[baseName]) {
+                    iskolehiyoSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 iskolehiyoSummary[baseName].quantity += quantity;
+                iskolehiyoSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    iskolehiyoSummary[baseName].sizes[size] = (iskolehiyoSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!iskolehiyoSummary[baseName].sizes[size]) {
+                        iskolehiyoSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    iskolehiyoSummary[baseName].sizes[size].quantity += quantity;
+                    iskolehiyoSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0 };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0,
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
             }
         });
     });
@@ -430,7 +583,7 @@ function updateHistoryOrdersSummary() {
     // Helper to build a summary table
     function buildTable(title, summaryObj, paglaomBaseOrder = []) {
         let html = `<h6 class='fw-bold mt-3 mb-2'>${title}</h6>`;
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th><th>Students</th></tr></thead><tbody>';
         const items = Object.keys(summaryObj);
         let sortedItems;
         if (title === 'PAGLAOM' && paglaomBaseOrder.length > 0) {
@@ -443,15 +596,46 @@ function updateHistoryOrdersSummary() {
             const others = items.filter(item => !tshirts.includes(item) && !totebags.includes(item)).sort();
             sortedItems = [...tshirts, ...totebags, ...others];
         }
+        
         sortedItems.forEach((item, idx) => {
+            const itemStudents = summaryObj[item].students || [];
+            const uniqueStudents = itemStudents.length;
+            
             if (/t-shirt/i.test(item)) {
                 // Dropdown for T-SHIRT: show total, expandable to show sizes
                 const collapseId = `${title.replace(/\s/g, '')}_history_tshirt_${idx}`;
                 const sizeMap = summaryObj[item].sizes || {};
                 const hasSizes = Object.keys(sizeMap).length > 0;
+                
+                // Create student dropdown for main item
+                const studentDropdownId = `students_history_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th><th>Claim Date</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        const claimDate = student.claimDate ? new Date(student.claimDate).toLocaleDateString() : '-';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                            <td>${claimDate}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
                 html += `<tr data-bs-toggle='collapse' data-bs-target='#${collapseId}' style='cursor:pointer;'>
                             <td><b>${item}</b> <span class='ms-1'><i class='bi bi-caret-down-fill'></i></span></td>
                             <td><b>${summaryObj[item].quantity}</b></td>
+                            <td>${studentDropdownHtml}</td>
                         </tr>`;
                 if (hasSizes) {
                     // Order sizes as S, M, L, XL, 2XL, 3XL, 4XL, 5XL, then others
@@ -460,15 +644,68 @@ function updateHistoryOrdersSummary() {
                         ...['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].filter(sz => allSizes.includes(sz)),
                         ...allSizes.filter(sz => !['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].includes(sz)).sort()
                     ];
-                    html += `<tr class='collapse' id='${collapseId}'><td colspan='2' style='padding:0;'>
+                    html += `<tr class='collapse' id='${collapseId}'><td colspan='3' style='padding:0;'>
                                 <table class='table table-sm mb-0'><tbody>`;
                     orderedSizes.forEach(size => {
-                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size]}</td></tr>`;
+                        const sizeStudents = sizeMap[size].students || [];
+                        const sizeUniqueStudents = sizeStudents.length;
+                        
+                        // Create student dropdown for size
+                        const sizeStudentDropdownId = `students_history_${title.replace(/\s/g, '')}_${idx}_${size}`;
+                        let sizeStudentDropdownHtml = '';
+                        if (sizeStudents.length > 0) {
+                            sizeStudentDropdownHtml = `<button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${sizeStudentDropdownId}">
+                                ${sizeUniqueStudents} student${sizeUniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                            </button>
+                            <div class="collapse mt-2" id="${sizeStudentDropdownId}">
+                                <div class="card card-body p-2">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>Student</th><th>Qty</th><th>Status</th><th>Claim Date</th></tr></thead><tbody>`;
+                            sizeStudents.forEach(student => {
+                                const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                                  student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                                const claimDate = student.claimDate ? new Date(student.claimDate).toLocaleDateString() : '-';
+                                sizeStudentDropdownHtml += `<tr>
+                                    <td>${student.studentName} (${student.studentNumber})</td>
+                                    <td>${student.quantity}</td>
+                                    <td class="${statusClass}">${student.paymentStatus}</td>
+                                    <td>${claimDate}</td>
+                                </tr>`;
+                            });
+                            sizeStudentDropdownHtml += `</tbody></table></div></div>`;
+                        }
+                        
+                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size].quantity}</td><td>${sizeStudentDropdownHtml}</td></tr>`;
                     });
                     html += `</tbody></table></td></tr>`;
                 }
             } else {
-                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td></tr>`;
+                // Create student dropdown for non-t-shirt items
+                const studentDropdownId = `students_history_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th><th>Claim Date</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        const claimDate = student.claimDate ? new Date(student.claimDate).toLocaleDateString() : '-';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                            <td>${claimDate}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
+                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td><td>${studentDropdownHtml}</td></tr>`;
             }
         });
         html += '</tbody></table></div>';
@@ -1406,7 +1643,7 @@ function prepareOrdersForExport(orders, isHistory) {
             rowData['Email'] = idx === 0 ? (firstOrder.email || '') : '';
             rowData['Item'] = item.itemName;
             rowData['Quantity'] = item.quantity;
-            rowData['Total'] = idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price}` : '';
+            rowData['Total'] = idx === 0 && firstOrder.price !== '' ? `₱${firstOrder.price.toFixed(2)}` : '';
             rowData['GCash Reference Number'] = idx === 0 ? (firstOrder.gcashReference || '-') : '';
             rowData['Payment Mode'] = idx === 0 ? (firstOrder.paymentMode || '-') : '';
             rowData['Timestamp'] = idx === 0 ? firstOrder.timestamp : '';
@@ -1476,29 +1713,56 @@ function importAllOrdersFromExcel(event) {
             const data = new Uint8Array(e.target.result);
             const workbook = XLSX.read(data, { type: 'array' });
 
-            // Track if any section was imported
+            // Track if any section was imported and if any changes were made
             let importedAny = false;
+            let changesMade = false;
+            
+            // Store original data to compare for changes
+            const originalOrders = JSON.parse(JSON.stringify(orders));
+            const originalInProcessOrders = JSON.parse(JSON.stringify(inProcessOrders));
+            const originalOrderHistory = JSON.parse(JSON.stringify(orderHistory));
+            const originalDeletedOrders = JSON.parse(JSON.stringify(deletedOrders));
 
             // Helper to process a sheet into an array of orders
             function processSheet(jsonData, isHistory) {
                 const importedOrders = [];
                 let currentOrder = null;
+                let currentItems = [];
+                
                 jsonData.forEach(row => {
                     if (row['Student Number']) {
-                        if (currentOrder) importedOrders.push(currentOrder);
+                        if (currentOrder) {
+                            // Combine all items for the current order
+                            currentOrder.itemName = currentItems.map(item => 
+                                item.quantity > 1 ? `${item.name} (${item.quantity}x)` : item.name
+                            ).join(', ');
+                            importedOrders.push(currentOrder);
+                        }
+                        
+                        // Start a new order
                         currentOrder = {
-                            studentNumber: row['Student Number'],
-                            studentName: row['Student Name'],
-                            email: row['Email'] === '-' ? '' : row['Email'],
-                            itemName: row['Item'],
-                            quantity: parseInt(row['Quantity']) || 1,
-                            price: row['Total'] ? parseFloat(String(row['Total']).replace('₱', '')) || 0 : 0,
-                            gcashReference: row['GCash Reference Number'] === '-' ? '' : row['GCash Reference Number'],
-                            paymentMode: row['Payment Mode'] === '-' ? '' : row['Payment Mode'],
-                            timestamp: row['Timestamp'],
+                            studentNumber: row['Student Number'] || '',
+                            studentName: row['Student Name'] || '',
+                            email: row['Email'] === '-' ? '' : (row['Email'] || ''),
+                            itemName: '', // Will be set after processing all items
+                            quantity: 1, // Default quantity as per original structure
+                            price: row['Total'] ? parseFloat(String(row['Total']).replace('₱', '').replace(',', '')) || 0 : 0,
+                            gcashReference: row['GCash Reference Number'] === '-' ? '' : (row['GCash Reference Number'] || ''),
+                            paymentMode: row['Payment Mode'] === '-' ? '' : (row['Payment Mode'] || ''),
+                            timestamp: row['Timestamp'] || '',
                             paymentStatus: row['Payment Status'] ? row['Payment Status'].toLowerCase() : '',
-                            date: row['Timestamp']
+                            date: row['Timestamp'] || ''
                         };
+                        
+                        // Reset items array for new order
+                        currentItems = [];
+                        if (row['Item']) {
+                            currentItems.push({
+                                name: row['Item'] || '',
+                                quantity: parseInt(row['Quantity']) || 1
+                            });
+                        }
+                        
                         if (isHistory && row['Claim Date'] && row['Claim Date'] !== '-') {
                             currentOrder.claimDate = row['Claim Date'];
                         }
@@ -1509,57 +1773,109 @@ function importAllOrdersFromExcel(event) {
                             currentOrder.notified = row['Notified'].toString().toLowerCase() === 'yes';
                         }
                         normalizePaymentStatus(currentOrder);
-                    } else if (currentOrder) {
-                        currentOrder.itemName += ', ' + row['Item'];
+                    } else if (currentOrder && row['Item']) {
+                        // Add additional item to current order
+                        currentItems.push({
+                            name: row['Item'] || '',
+                            quantity: parseInt(row['Quantity']) || 1
+                        });
                     }
                 });
-                if (currentOrder) importedOrders.push(currentOrder);
+                
+                if (currentOrder) {
+                    // Combine all items for the last order
+                    currentOrder.itemName = currentItems.map(item => 
+                        item.quantity > 1 ? `${item.name} (${item.quantity}x)` : item.name
+                    ).join(', ');
+                    importedOrders.push(currentOrder);
+                }
+                
                 return importedOrders;
             }
 
+            // Validate that the file has the expected format
+            const expectedColumns = ['Order No.', 'Student Number', 'Student Name', 'Email', 'Item', 'Quantity', 'Total', 'GCash Reference Number', 'Payment Mode', 'Timestamp', 'Payment Status', 'Notified'];
+            
             // Process each sheet
             workbook.SheetNames.forEach(sheetName => {
                 const sheet = workbook.Sheets[sheetName];
                 const jsonData = XLSX.utils.sheet_to_json(sheet);
                 if (!jsonData.length) return;
-
-                // Helper function to check if an order exists in any section
-                function orderExistsInSection(order, section) {
-                    return section.some(existingOrder => 
-                        existingOrder.studentNumber === order.studentNumber && 
-                        existingOrder.timestamp === order.timestamp
-                    );
+                
+                // Validate column headers for the first row
+                const firstRow = jsonData[0];
+                const hasRequiredColumns = expectedColumns.every(col => firstRow.hasOwnProperty(col));
+                if (!hasRequiredColumns) {
+                    console.warn(`Sheet "${sheetName}" does not have the expected column format. Skipping...`);
+                    return;
                 }
 
-                if (sheetName.toLowerCase().includes('orders') && sheetName.toLowerCase() === 'orders') {
+                            // Helper function to check if an order exists in any section
+            function orderExistsInSection(order, section) {
+                return section.some(existingOrder => 
+                    existingOrder.studentNumber === order.studentNumber && 
+                    existingOrder.timestamp === order.timestamp
+                );
+            }
+            
+            // Helper function to check if arrays are different
+            function arraysAreDifferent(arr1, arr2) {
+                if (arr1.length !== arr2.length) return true;
+                return arr1.some((item, index) => JSON.stringify(item) !== JSON.stringify(arr2[index]));
+            }
+
+                if (sheetName.toLowerCase() === 'orders') {
                     const processedOrders = processSheet(jsonData, false);
                     // Filter out orders that exist in other sections
-                    orders = processedOrders.filter(order => 
+                    const newOrders = processedOrders.filter(order => 
                         !orderExistsInSection(order, inProcessOrders) &&
                         !orderExistsInSection(order, orderHistory) &&
                         !orderExistsInSection(order, deletedOrders)
                     );
+                    if (arraysAreDifferent(orders, newOrders)) {
+                        orders = newOrders;
+                        changesMade = true;
+                    }
                     importedAny = true;
-                } else if (sheetName.toLowerCase().includes('in-process')) {
-                    inProcessOrders = processSheet(jsonData, false);
+                } else if (sheetName.toLowerCase() === 'in-process orders') {
+                    const newInProcessOrders = processSheet(jsonData, false);
+                    if (arraysAreDifferent(inProcessOrders, newInProcessOrders)) {
+                        inProcessOrders = newInProcessOrders;
+                        changesMade = true;
+                    }
                     importedAny = true;
-                } else if (sheetName.toLowerCase().includes('history')) {
-                    orderHistory = processSheet(jsonData, true);
+                } else if (sheetName.toLowerCase() === 'order history') {
+                    const newOrderHistory = processSheet(jsonData, true);
+                    if (arraysAreDifferent(orderHistory, newOrderHistory)) {
+                        orderHistory = newOrderHistory;
+                        changesMade = true;
+                    }
                     importedAny = true;
-                } else if (sheetName.toLowerCase().includes('deleted')) {
-                    deletedOrders = processSheet(jsonData, true);
+                } else if (sheetName.toLowerCase() === 'deleted orders') {
+                    const newDeletedOrders = processSheet(jsonData, true);
+                    if (arraysAreDifferent(deletedOrders, newDeletedOrders)) {
+                        deletedOrders = newDeletedOrders;
+                        changesMade = true;
+                    }
                     importedAny = true;
                 }
             });
 
             if (!importedAny) {
-                showNotification('No recognized sheets (Orders, In-Process Orders, Order History, Deleted Orders) found in file.', 'warning');
+                showNotification('No recognized sheets (Orders, In-Process Orders, Order History, Deleted Orders) found in file. Please ensure the Excel file was exported from this application.', 'warning');
                 return;
             }
 
-            saveOrders();
-            updateOrdersList();
-            showNotification('Successfully imported all orders and updated all sections.', 'success');
+            if (changesMade) {
+                saveOrders();
+                updateOrdersList();
+                showNotification('Successfully imported all orders and updated all sections.', 'success');
+            } else {
+                showNotification('No changes were made. The imported data is identical to the current data.', 'info');
+            }
+            
+            // Clear the file input to allow re-importing the same file
+            event.target.value = '';
         } catch (error) {
             console.error('Error importing Excel file:', error);
             showNotification('Error importing Excel file. Please check the file format.', 'error');
@@ -2032,29 +2348,68 @@ function updateOrdersSummary() {
                 let trailing = rawName.match(/\b(S|M|L|XL|XXL|XS|2XL|3XL|4XL)\b$/i);
                 if (trailing) size = trailing[1].toUpperCase();
             }
+            
+            // Create student info object
+            const studentInfo = {
+                studentNumber: order.studentNumber,
+                studentName: order.studentName,
+                quantity: quantity,
+                paymentStatus: order.paymentStatus,
+                timestamp: order.timestamp
+            };
+            
             // PAGLAOM base items always go to PAGLAOM
             if (paglaomBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    paglaomSummary[baseName].sizes[size] = (paglaomSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!paglaomSummary[baseName].sizes[size]) {
+                        paglaomSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    paglaomSummary[baseName].sizes[size].quantity += quantity;
+                    paglaomSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else if (iskolehiyoBaseItems.some(b => b.toLowerCase() === baseName.toLowerCase())) {
-                if (!iskolehiyoSummary[baseName]) iskolehiyoSummary[baseName] = { quantity: 0, sizes: {} };
+                if (!iskolehiyoSummary[baseName]) {
+                    iskolehiyoSummary[baseName] = { 
+                        quantity: 0, 
+                        sizes: {},
+                        students: []
+                    };
+                }
                 iskolehiyoSummary[baseName].quantity += quantity;
+                iskolehiyoSummary[baseName].students.push(studentInfo);
                 if (/t-shirt/i.test(baseName) && size) {
-                    iskolehiyoSummary[baseName].sizes[size] = (iskolehiyoSummary[baseName].sizes[size] || 0) + quantity;
+                    if (!iskolehiyoSummary[baseName].sizes[size]) {
+                        iskolehiyoSummary[baseName].sizes[size] = { quantity: 0, students: [] };
+                    }
+                    iskolehiyoSummary[baseName].sizes[size].quantity += quantity;
+                    iskolehiyoSummary[baseName].sizes[size].students.push(studentInfo);
                 }
             } else {
-                if (!paglaomSummary[baseName]) paglaomSummary[baseName] = { quantity: 0 };
+                if (!paglaomSummary[baseName]) {
+                    paglaomSummary[baseName] = { 
+                        quantity: 0,
+                        students: []
+                    };
+                }
                 paglaomSummary[baseName].quantity += quantity;
+                paglaomSummary[baseName].students.push(studentInfo);
             }
         });
     });
+    
     // Helper to build a summary table
     function buildTable(title, summaryObj, paglaomBaseOrder = []) {
         let html = `<h6 class='fw-bold mt-3 mb-2'>${title}</h6>`;
-        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th></tr></thead><tbody>';
+        html += '<div class="table-responsive"><table class="table table-sm table-bordered"><thead><tr><th>Item</th><th>Total Quantity</th><th>Students</th></tr></thead><tbody>';
         const items = Object.keys(summaryObj);
         let sortedItems;
         if (title === 'PAGLAOM' && paglaomBaseOrder.length > 0) {
@@ -2067,15 +2422,44 @@ function updateOrdersSummary() {
             const others = items.filter(item => !tshirts.includes(item) && !totebags.includes(item)).sort();
             sortedItems = [...tshirts, ...totebags, ...others];
         }
+        
         sortedItems.forEach((item, idx) => {
+            const itemStudents = summaryObj[item].students || [];
+            const uniqueStudents = itemStudents.length;
+            
             if (/t-shirt/i.test(item)) {
                 // Dropdown for T-SHIRT: show total, expandable to show sizes
-                const collapseId = `${title.replace(/\s/g, '')}_tshirt_${idx}`;
+                const collapseId = `${title.replace(/\s/g, '')}_inprocess_tshirt_${idx}`;
                 const sizeMap = summaryObj[item].sizes || {};
                 const hasSizes = Object.keys(sizeMap).length > 0;
+                
+                // Create student dropdown for main item
+                const studentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
                 html += `<tr data-bs-toggle='collapse' data-bs-target='#${collapseId}' style='cursor:pointer;'>
                             <td><b>${item}</b> <span class='ms-1'><i class='bi bi-caret-down-fill'></i></span></td>
                             <td><b>${summaryObj[item].quantity}</b></td>
+                            <td>${studentDropdownHtml}</td>
                         </tr>`;
                 if (hasSizes) {
                     // Order sizes as S, M, L, XL, 2XL, 3XL, 4XL, 5XL, then others
@@ -2084,15 +2468,64 @@ function updateOrdersSummary() {
                         ...['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].filter(sz => allSizes.includes(sz)),
                         ...allSizes.filter(sz => !['S', 'M', 'L', 'XL', '2XL', '3XL', '4XL', '5XL'].includes(sz)).sort()
                     ];
-                    html += `<tr class='collapse' id='${collapseId}'><td colspan='2' style='padding:0;'>
+                    html += `<tr class='collapse' id='${collapseId}'><td colspan='3' style='padding:0;'>
                                 <table class='table table-sm mb-0'><tbody>`;
                     orderedSizes.forEach(size => {
-                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size]}</td></tr>`;
+                        const sizeStudents = sizeMap[size].students || [];
+                        const sizeUniqueStudents = sizeStudents.length;
+                        
+                        // Create student dropdown for size
+                        const sizeStudentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}_${size}`;
+                        let sizeStudentDropdownHtml = '';
+                        if (sizeStudents.length > 0) {
+                            sizeStudentDropdownHtml = `<button class="btn btn-sm btn-outline-secondary" type="button" data-bs-toggle="collapse" data-bs-target="#${sizeStudentDropdownId}">
+                                ${sizeUniqueStudents} student${sizeUniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                            </button>
+                            <div class="collapse mt-2" id="${sizeStudentDropdownId}">
+                                <div class="card card-body p-2">
+                                    <table class="table table-sm mb-0">
+                                        <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                            sizeStudents.forEach(student => {
+                                const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                                  student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                                sizeStudentDropdownHtml += `<tr>
+                                    <td>${student.studentName} (${student.studentNumber})</td>
+                                    <td>${student.quantity}</td>
+                                    <td class="${statusClass}">${student.paymentStatus}</td>
+                                </tr>`;
+                            });
+                            sizeStudentDropdownHtml += `</tbody></table></div></div>`;
+                        }
+                        
+                        html += `<tr><td style='padding-left:2em;'>${size}</td><td>${sizeMap[size].quantity}</td><td>${sizeStudentDropdownHtml}</td></tr>`;
                     });
                     html += `</tbody></table></td></tr>`;
                 }
             } else {
-                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td></tr>`;
+                // Create student dropdown for non-t-shirt items
+                const studentDropdownId = `students_inprocess_${title.replace(/\s/g, '')}_${idx}`;
+                let studentDropdownHtml = '';
+                if (itemStudents.length > 0) {
+                    studentDropdownHtml = `<button class="btn btn-sm btn-outline-info" type="button" data-bs-toggle="collapse" data-bs-target="#${studentDropdownId}">
+                        ${uniqueStudents} student${uniqueStudents > 1 ? 's' : ''} <i class="bi bi-caret-down-fill"></i>
+                    </button>
+                    <div class="collapse mt-2" id="${studentDropdownId}">
+                        <div class="card card-body p-2">
+                            <table class="table table-sm mb-0">
+                                <thead><tr><th>Student</th><th>Qty</th><th>Status</th></tr></thead><tbody>`;
+                    itemStudents.forEach(student => {
+                        const statusClass = student.paymentStatus === 'paid' ? 'text-success' : 
+                                          student.paymentStatus === 'unpaid' ? 'text-danger' : 'text-warning';
+                        studentDropdownHtml += `<tr>
+                            <td>${student.studentName} (${student.studentNumber})</td>
+                            <td>${student.quantity}</td>
+                            <td class="${statusClass}">${student.paymentStatus}</td>
+                        </tr>`;
+                    });
+                    studentDropdownHtml += `</tbody></table></div></div>`;
+                }
+                
+                html += `<tr><td>${item}</td><td>${summaryObj[item].quantity}</td><td>${studentDropdownHtml}</td></tr>`;
             }
         });
         html += '</tbody></table></div>';
