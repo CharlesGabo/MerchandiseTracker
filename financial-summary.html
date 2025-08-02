@@ -774,28 +774,38 @@
                         let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Price</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
                         itemOrders.forEach(o => {
                             const basePrice = getItemPrice(o.displayItemName);
-                            let displayPrice, priceDescription;
+                            let displayPrice, priceDescription, totalPrice, totalPriceDescription;
+                            
+                            const detectedSize = extractSizeFromItemName(o.displayItemName);
+                            const itemQuantity = extractQuantityFromItemName(o.displayItemName);
                             
                             if (o.paymentStatus === 'paid') {
                                 if (o.hadInterest) {
                                     displayPrice = basePrice + 10;
                                     priceDescription = `${formatCurrency(basePrice)} + ₱10 interest = ${formatCurrency(displayPrice)}`;
+                                    totalPrice = displayPrice * itemQuantity;
+                                    totalPriceDescription = `${priceDescription} × ${itemQuantity} = ${formatCurrency(totalPrice)}`;
                                 } else {
                                     displayPrice = basePrice;
                                     priceDescription = formatCurrency(displayPrice);
+                                    totalPrice = displayPrice * itemQuantity;
+                                    totalPriceDescription = `${priceDescription} × ${itemQuantity} = ${formatCurrency(totalPrice)}`;
                                 }
                             } else if (o.paymentStatus === 'half-paid') {
-                                displayPrice = 200 + 10;
-                                priceDescription = `₱200 temporary + ₱10 = ${formatCurrency(displayPrice)}`;
+                                // For half-paid, calculate: (₱200 × quantity) + ₱10 (interest only once)
+                                const baseTotal = 200 * itemQuantity;
+                                totalPrice = baseTotal + 10;
+                                priceDescription = `₱200 × ${itemQuantity} + ₱10 interest = ${formatCurrency(totalPrice)}`;
+                                totalPriceDescription = priceDescription;
                             } else {
                                 displayPrice = basePrice;
                                 priceDescription = formatCurrency(displayPrice);
+                                totalPrice = displayPrice * itemQuantity;
+                                totalPriceDescription = `${priceDescription} × ${itemQuantity} = ${formatCurrency(totalPrice)}`;
                             }
                             
-                            const detectedSize = extractSizeFromItemName(o.displayItemName);
-                            const itemQuantity = extractQuantityFromItemName(o.displayItemName);
-                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${displayPrice}, Quantity: ${itemQuantity}`);
-                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${itemQuantity}</td><td title="${priceDescription}">${formatCurrency(displayPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
+                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${displayPrice || 'N/A'}, Quantity: ${itemQuantity}, Total: ${totalPrice}`);
+                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${itemQuantity}</td><td title="${totalPriceDescription}">${formatCurrency(totalPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
                         });
                         table += '</tbody></table></div>';
                         itemDetailsDiv.innerHTML = table;

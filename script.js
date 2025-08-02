@@ -921,7 +921,7 @@ function updateOrdersList() {
                             // Calculate total quantity for this order
                             const totalQuantity = allItems.reduce((sum, item) => sum + item.quantity, 0);
                             const temporaryPrice = 200 * totalQuantity;
-                            totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)}</span>`;
+                            totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)} </span>`;
                         } else if (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest) {
                             const interest = 10;
                             const base = total;
@@ -1030,7 +1030,7 @@ function updateOrdersList() {
                         // Calculate total quantity for this order
                         const totalQuantity = allItems.reduce((sum, item) => sum + item.quantity, 0);
                         const temporaryPrice = 200 * totalQuantity;
-                        totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)}</span>`;
+                        totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)}+10</span>`;
                     } else if (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest) {
                         const interest = 10;
                         const base = total;
