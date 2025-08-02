@@ -139,10 +139,20 @@
                 </div>
             </div>
             <div class="tab-pane fade" id="inprocess" role="tabpanel" aria-labelledby="inprocess-tab">
-                <div class="card mt-3">
-                    <div class="card-body">
-                        <h5 class="card-title">In-Process Orders</h5>
-                        <div class="table-responsive">
+                <ul class="nav nav-tabs mb-3" id="inProcessSubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="inprocess-list-tab" data-bs-toggle="tab" data-bs-target="#inprocess-list" type="button" role="tab" aria-controls="inprocess-list" aria-selected="true">Order List</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="inprocess-summary-tab" data-bs-toggle="tab" data-bs-target="#inprocess-summary" type="button" role="tab" aria-controls="inprocess-summary" aria-selected="false">Summary</button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="inProcessSubTabsContent">
+                    <div class="tab-pane fade show active" id="inprocess-list" role="tabpanel" aria-labelledby="inprocess-list-tab">
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h5 class="card-title">In-Process Orders</h5>
+                                <div class="table-responsive">
                             <table class="table">
                                 <thead>
                                     <tr>
@@ -168,11 +178,31 @@
                     </div>
                 </div>
             </div>
-            <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
+            <div class="tab-pane fade" id="inprocess-summary" role="tabpanel" aria-labelledby="inprocess-summary-tab">
                 <div class="card mt-3">
                     <div class="card-body">
-                        <h5 class="card-title">Order History</h5>
-                        <div class="row mb-3">
+                        <h5 class="card-title">Summary</h5>
+                        <div id="inProcessSummary" class="mb-4"><!-- Summary will be populated here --></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+            <div class="tab-pane fade" id="history" role="tabpanel" aria-labelledby="history-tab">
+                <ul class="nav nav-tabs mb-3" id="historySubTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="history-list-tab" data-bs-toggle="tab" data-bs-target="#history-list" type="button" role="tab" aria-controls="history-list" aria-selected="true">Order List</button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="history-summary-tab" data-bs-toggle="tab" data-bs-target="#history-summary" type="button" role="tab" aria-controls="history-summary" aria-selected="false">Summary</button>
+                    </li>
+                </ul>
+                <div class="tab-content" id="historySubTabsContent">
+                    <div class="tab-pane fade show active" id="history-list" role="tabpanel" aria-labelledby="history-list-tab">
+                        <div class="card mt-3">
+                            <div class="card-body">
+                                <h5 class="card-title">Order History</h5>
+                                <div class="row mb-3">
                             <div class="col-md-3">
                                 <label for="historyStartDate" class="form-label">Start Date</label>
                                 <input type="date" id="historyStartDate" class="form-control" placeholder="Start Date">
@@ -208,6 +238,16 @@
                     </div>
                 </div>
             </div>
+            <div class="tab-pane fade" id="history-summary" role="tabpanel" aria-labelledby="history-summary-tab">
+                <div class="card mt-3">
+                    <div class="card-body">
+                        <h5 class="card-title">Summary</h5>
+                        <div id="historyOrdersSummary" class="mb-4"><!-- Summary will be populated here --></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
             <div class="tab-pane fade" id="deleted" role="tabpanel" aria-labelledby="deleted-tab">
                 <div class="card mt-3">
                     <div class="card-body">
