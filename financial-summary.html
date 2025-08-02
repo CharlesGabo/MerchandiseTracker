@@ -74,6 +74,14 @@
                     </div>
                 </div>
             </div>
+            <div class="col-md-2">
+                <div class="card">
+                    <div class="card-body">
+                        <h5 class="card-title">Total Orders</h5>
+                        <h3 id="totalOrders" class="text-secondary">0</h3>
+                    </div>
+                </div>
+            </div>
         </div>
 
         <!-- Charts Row -->
@@ -369,21 +377,36 @@
                     return orderDate >= start && orderDate <= end;
                 });
             }
-            const totalRevenue = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+            // Create filtered deleted orders array for date filtering
+            let filteredDeleted = deletedOrders;
+            if (startDate && endDate) {
+                const start = new Date(startDate);
+                const end = new Date(endDate);
+                end.setHours(23, 59, 59, 999);
+                filteredDeleted = deletedOrders.filter(order => {
+                    const orderDate = new Date(order.date);
+                    return orderDate >= start && orderDate <= end;
+                });
+            }
+            
+            // Include all sections in calculations
+            const allFilteredOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...filteredDeleted];
+            
+            const totalRevenue = allFilteredOrders
                 .filter(order => order.paymentStatus === 'paid')
                 .reduce((sum, order) => sum + (order.hadInterest ? (order.price + 10) : order.price) * order.quantity, 0);
-            const paidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+            const paidOrders = allFilteredOrders
                 .filter(order => order.paymentStatus === 'paid').length;
-            const unpaidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+            const unpaidOrders = allFilteredOrders
                 .filter(order => order.paymentStatus === 'unpaid').length;
             const inProcessCount = filteredInProcess.length;
             // Calculate half-paid total and quantity
-            const halfPaidOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+            const halfPaidOrders = allFilteredOrders
                 .filter(order => order.paymentStatus === 'half-paid');
             const totalHalfPaid = halfPaidOrders.reduce((sum, order) => sum + ((200 + 10) * order.quantity), 0);
             const halfPaidQty = halfPaidOrders.reduce((sum, order) => sum + order.quantity, 0);
             // Calculate unpaid total and quantity
-            const unpaidOrdersArr = [...filteredOrders, ...filteredInProcess, ...filteredHistory]
+            const unpaidOrdersArr = allFilteredOrders
                 .filter(order => order.paymentStatus === 'unpaid');
             const totalUnpaid = unpaidOrdersArr.reduce((sum, order) => sum + (order.price * order.quantity), 0);
             const unpaidQty = unpaidOrdersArr.reduce((sum, order) => sum + order.quantity, 0);
@@ -393,15 +416,28 @@
             document.getElementById('paidOrders').textContent = paidOrders;
             document.getElementById('unpaidOrders').textContent = unpaidOrders;
             document.getElementById('inProcessOrders').textContent = inProcessCount;
-            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...deletedOrders];
+            document.getElementById('totalOrders').textContent = allFilteredOrders.length;
+            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...filteredDeleted];
             
             // Debug: Log order counts from each section
             console.log('Orders from each section:');
             console.log('Orders:', filteredOrders.length);
             console.log('In-Process Orders:', filteredInProcess.length);
             console.log('Order History:', filteredHistory.length);
-            console.log('Deleted Orders:', deletedOrders.length);
-            console.log('Total Orders:', allOrders.length);
+            console.log('Deleted Orders:', filteredDeleted.length);
+            console.log('Total Orders:', allFilteredOrders.length);
+            
+            // Debug: Log payment status breakdown
+            const paidCount = allFilteredOrders.filter(o => o.paymentStatus === 'paid').length;
+            const halfPaidCount = allFilteredOrders.filter(o => o.paymentStatus === 'half-paid').length;
+            const unpaidCount = allFilteredOrders.filter(o => o.paymentStatus === 'unpaid').length;
+            console.log('Payment Status Breakdown:');
+            console.log('Paid Orders:', paidCount);
+            console.log('Half-Paid Orders:', halfPaidCount);
+            console.log('Unpaid Orders:', unpaidCount);
+            console.log('Total Revenue:', formatCurrency(totalRevenue));
+            console.log('Total Half-Paid:', formatCurrency(totalHalfPaid));
+            console.log('Total Unpaid:', formatCurrency(totalUnpaid));
             // Payment Status Chart
             const paidAmount = allOrders
                 .filter(order => order.paymentStatus === 'paid')
@@ -458,11 +494,11 @@
             paymentModeChart.data.datasets[0].data = [gcashAmount, cashAmount, otherAmount];
             paymentModeChart.update();
             // Build and store item summary globally, then update table
-            globalAllOrders = allOrders;
-            globalItemSummary = buildItemSummary(allOrders);
+            globalAllOrders = allFilteredOrders;
+            globalItemSummary = buildItemSummary(allFilteredOrders);
             // updateItemSummaryTable();
             // Add this line to render the new breakdown
-            renderMonthlyBreakdown(allOrders);
+            renderMonthlyBreakdown(allFilteredOrders);
         }
 
 
@@ -529,6 +565,12 @@
             }
         }
 
+        // Helper to extract quantity from item name (e.g., "AIRPLANE PIN (2x)" -> 2)
+        function extractQuantityFromItemName(itemName) {
+            const match = itemName.match(/\((\d+)x\)/i);
+            return match ? parseInt(match[1], 10) : 1;
+        }
+
         // New: Render Monthly/Weekly/Item/Transaction breakdown
         function renderMonthlyBreakdown(allOrders) {
             const container = document.getElementById('mtMonthlyBreakdown');
@@ -555,25 +597,26 @@
                 monthOrders.forEach(o => {
                     // Split multiple items in one order and calculate based on base costs
                     let itemNames = o.itemName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
-                    itemNames.forEach(name => {
-                        const baseCost = getItemPrice(name);
-                        if (o.paymentStatus === 'paid') { 
-                            // For paid orders, use original price + 10 pesos if had interest
-                            const paidAmount = o.hadInterest ? (baseCost + 10) : baseCost;
-                            profit += paidAmount * o.quantity; 
-                            paid++; 
-                        }
-                        else if (o.paymentStatus === 'half-paid') {
-                            // For half-paid orders, use temporary price of 200 + 10 pesos
-                            profit += (200 + 10) * o.quantity;
-                            paid++;
-                        }
-                        else if (o.paymentStatus === 'unpaid') { 
-                            unpaid += baseCost * o.quantity; 
-                            unpaidCount++; 
-                        }
-                        count++;
-                    });
+                                            itemNames.forEach(name => {
+                            const baseCost = getItemPrice(name);
+                            const itemQuantity = extractQuantityFromItemName(name);
+                            if (o.paymentStatus === 'paid') { 
+                                // For paid orders, use original price + 10 pesos if had interest
+                                const paidAmount = o.hadInterest ? (baseCost + 10) : baseCost;
+                                profit += paidAmount * itemQuantity; 
+                                paid++; 
+                            }
+                            else if (o.paymentStatus === 'half-paid') {
+                                // For half-paid orders, use temporary price of 200 + 10 pesos
+                                profit += (200 + 10) * itemQuantity;
+                                paid++;
+                            }
+                            else if (o.paymentStatus === 'unpaid') { 
+                                unpaid += baseCost * itemQuantity; 
+                                unpaidCount++; 
+                            }
+                            count++;
+                        });
                 });
                 // Month row
                 const monthChevronId = `chevron-month-${monthKey}`;
@@ -613,19 +656,20 @@
                         let itemNames = o.itemName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
                         itemNames.forEach(name => {
                             const baseCost = getItemPrice(name);
+                            const itemQuantity = extractQuantityFromItemName(name);
                             if (o.paymentStatus === 'paid') { 
                                 // For paid orders, use original price + 10 pesos if had interest
                                 const paidAmount = o.hadInterest ? (baseCost + 10) : baseCost;
-                                wProfit += paidAmount * o.quantity; 
+                                wProfit += paidAmount * itemQuantity; 
                                 wPaid++; 
                             }
                             else if (o.paymentStatus === 'half-paid') {
                                 // For half-paid orders, use temporary price of 200 + 10 pesos
-                                wProfit += (200 + 10) * o.quantity;
+                                wProfit += (200 + 10) * itemQuantity;
                                 wPaid++;
                             }
                             else if (o.paymentStatus === 'unpaid') { 
-                                wUnpaid += baseCost * o.quantity; 
+                                wUnpaid += baseCost * itemQuantity; 
                                 wUnpaidCount++; 
                             }
                             wCount++;
@@ -666,19 +710,20 @@
                             let orderClone = { ...order, displayItemName: name };
                             items[baseName].orders.push(orderClone);
                             const baseCost = getItemPrice(name);
+                            const itemQuantity = extractQuantityFromItemName(name);
                             if (order.paymentStatus === 'paid') { 
                                 // For paid orders, use original price + 10 pesos if had interest
                                 const paidAmount = order.hadInterest ? (baseCost + 10) : baseCost;
-                                items[baseName].profit += paidAmount * order.quantity; 
+                                items[baseName].profit += paidAmount * itemQuantity; 
                                 items[baseName].paid++; 
                             }
                             else if (order.paymentStatus === 'half-paid') {
                                 // For half-paid orders, use temporary price of 200 + 10 pesos
-                                items[baseName].profit += (200 + 10) * order.quantity;
+                                items[baseName].profit += (200 + 10) * itemQuantity;
                                 items[baseName].paid++;
                             }
                             else if (order.paymentStatus === 'unpaid') { 
-                                items[baseName].unpaid += baseCost * order.quantity; 
+                                items[baseName].unpaid += baseCost * itemQuantity; 
                                 items[baseName].unpaidCount++; 
                             }
                             items[baseName].count++;
@@ -748,8 +793,9 @@
                             }
                             
                             const detectedSize = extractSizeFromItemName(o.displayItemName);
-                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${displayPrice}`);
-                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td title="${priceDescription}">${formatCurrency(displayPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
+                            const itemQuantity = extractQuantityFromItemName(o.displayItemName);
+                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${displayPrice}, Quantity: ${itemQuantity}`);
+                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${itemQuantity}</td><td title="${priceDescription}">${formatCurrency(displayPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
                         });
                         table += '</tbody></table></div>';
                         itemDetailsDiv.innerHTML = table;
@@ -800,7 +846,7 @@
             initializeCharts();
             updateFinancialSummary();
             // Populate filter dropdown once on page load
-            globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory]);
+            globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory, ...deletedOrders]);
             document.getElementById('itemFilter').addEventListener('change', () => {
                 // updateItemSummaryTable();
             });
@@ -811,11 +857,12 @@
 
         // Real-time sync: update summary if localStorage changes (e.g., from index.html)
         window.addEventListener('storage', function(e) {
-            if (["orders", "inProcessOrders", "orderHistory"].includes(e.key)) {
+            if (["orders", "inProcessOrders", "orderHistory", "deletedOrders"].includes(e.key)) {
                 // Reload the latest data from localStorage
                 orders = JSON.parse(localStorage.getItem('orders')) || [];
                 inProcessOrders = JSON.parse(localStorage.getItem('inProcessOrders')) || [];
                 orderHistory = JSON.parse(localStorage.getItem('orderHistory')) || [];
+                deletedOrders = JSON.parse(localStorage.getItem('deletedOrders')) || [];
                 updateFinancialSummary();
             }
         });

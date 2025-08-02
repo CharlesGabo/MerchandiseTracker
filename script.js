@@ -915,9 +915,14 @@ function updateOrdersList() {
                     cells += `<td>${item.itemName}</td>`;
                     cells += `<td>${item.quantity}</td>`;
                     if (idx === 0) {
-                        // Show interest for half-paid status and paid status that had interest
+                        // Show temporary price for half-paid status and original price + interest for paid status that had interest
                         let totalCell = '';
-                        if (firstOrder.paymentStatus === 'half-paid' || (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest)) {
+                        if (firstOrder.paymentStatus === 'half-paid') {
+                            // Calculate total quantity for this order
+                            const totalQuantity = allItems.reduce((sum, item) => sum + item.quantity, 0);
+                            const temporaryPrice = 200 * totalQuantity;
+                            totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)}</span>`;
+                        } else if (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest) {
                             const interest = 10;
                             const base = total;
                             const sum = base + interest;
@@ -1019,9 +1024,14 @@ function updateOrdersList() {
                 cells += `<td>${item.itemName}</td>`;
                 cells += `<td>${item.quantity}</td>`;
                 if (idx === 0) {
-                    // Show interest for half-paid status and paid status that came from half-paid
+                    // Show temporary price for half-paid status and original price + interest for paid status that came from half-paid
                     let totalCell = '';
-                    if (firstOrder.paymentStatus === 'half-paid' || (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest)) {
+                    if (firstOrder.paymentStatus === 'half-paid') {
+                        // Calculate total quantity for this order
+                        const totalQuantity = allItems.reduce((sum, item) => sum + item.quantity, 0);
+                        const temporaryPrice = 200 * totalQuantity;
+                        totalCell = `<span style="color: #856404; font-style: italic;">Temporary: ${formatCurrency(temporaryPrice)}</span>`;
+                    } else if (firstOrder.paymentStatus === 'paid' && firstOrder.hadInterest) {
                         const interest = 10;
                         const base = total;
                         const sum = base + interest;
