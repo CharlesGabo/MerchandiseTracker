@@ -222,9 +222,7 @@
                         itemSummary[itemName].paidQuantity += quantity;
                         const paidAmount = order.hadInterest ? (order.price + 10) : order.price;
                         itemSummary[itemName].totalRevenue += paidAmount * quantity;
-                    } else if (order.paymentStatus === 'half-paid') {
-                        itemSummary[itemName].paidQuantity += quantity;
-                        itemSummary[itemName].totalRevenue += (200 + 10) * quantity;
+
                     } else if (order.paymentStatus === 'unpaid') {
                         itemSummary[itemName].unpaidQuantity += quantity;
                     } else {
@@ -400,18 +398,14 @@
             const unpaidOrders = allFilteredOrders
                 .filter(order => order.paymentStatus === 'unpaid').length;
             const inProcessCount = filteredInProcess.length;
-            // Calculate half-paid total and quantity
-            const halfPaidOrders = allFilteredOrders
-                .filter(order => order.paymentStatus === 'half-paid');
-            const totalHalfPaid = halfPaidOrders.reduce((sum, order) => sum + ((200 + 10) * order.quantity), 0);
-            const halfPaidQty = halfPaidOrders.reduce((sum, order) => sum + order.quantity, 0);
+
             // Calculate unpaid total and quantity
             const unpaidOrdersArr = allFilteredOrders
                 .filter(order => order.paymentStatus === 'unpaid');
             const totalUnpaid = unpaidOrdersArr.reduce((sum, order) => sum + (order.price * order.quantity), 0);
             const unpaidQty = unpaidOrdersArr.reduce((sum, order) => sum + order.quantity, 0);
             document.getElementById('totalRevenue').textContent = formatCurrency(totalRevenue);
-            document.getElementById('totalHalfPaid').innerHTML = `${formatCurrency(totalHalfPaid)} <span id="halfPaidQty" class="fs-6 text-muted">(${halfPaidQty})</span>`;
+            document.getElementById('totalHalfPaid').innerHTML = `${formatCurrency(0)} <span id="halfPaidQty" class="fs-6 text-muted">(0)</span>`;
             document.getElementById('totalUnpaid').innerHTML = `${formatCurrency(totalUnpaid)} <span id="unpaidQty" class="fs-6 text-muted">(${unpaidQty})</span>`;
             document.getElementById('paidOrders').textContent = paidOrders;
             document.getElementById('unpaidOrders').textContent = unpaidOrders;
@@ -429,14 +423,12 @@
             
             // Debug: Log payment status breakdown
             const paidCount = allFilteredOrders.filter(o => o.paymentStatus === 'paid').length;
-            const halfPaidCount = allFilteredOrders.filter(o => o.paymentStatus === 'half-paid').length;
+
             const unpaidCount = allFilteredOrders.filter(o => o.paymentStatus === 'unpaid').length;
             console.log('Payment Status Breakdown:');
             console.log('Paid Orders:', paidCount);
-            console.log('Half-Paid Orders:', halfPaidCount);
             console.log('Unpaid Orders:', unpaidCount);
             console.log('Total Revenue:', formatCurrency(totalRevenue));
-            console.log('Total Half-Paid:', formatCurrency(totalHalfPaid));
             console.log('Total Unpaid:', formatCurrency(totalUnpaid));
             // Payment Status Chart
             const paidAmount = allOrders
@@ -445,10 +437,7 @@
             const unpaidAmount = allOrders
                 .filter(order => order.paymentStatus === 'unpaid')
                 .reduce((sum, order) => sum + (order.price * order.quantity), 0);
-            const halfPaidAmount = allOrders
-                .filter(order => order.paymentStatus === 'half-paid')
-                .reduce((sum, order) => sum + ((200 + 10) * order.quantity), 0);
-            paymentStatusChart.data.datasets[0].data = [paidAmount, unpaidAmount, halfPaidAmount];
+            paymentStatusChart.data.datasets[0].data = [paidAmount, unpaidAmount, 0];
             paymentStatusChart.update();
             // Payment Mode Chart
             const gcashAmount = allOrders
@@ -457,8 +446,6 @@
                     let amount;
                     if (order.paymentStatus === 'paid') {
                         amount = order.hadInterest ? (order.price + 10) : order.price;
-                    } else if (order.paymentStatus === 'half-paid') {
-                        amount = 200 + 10;
                     } else {
                         amount = order.price;
                     }
@@ -470,8 +457,6 @@
                     let amount;
                     if (order.paymentStatus === 'paid') {
                         amount = order.hadInterest ? (order.price + 10) : order.price;
-                    } else if (order.paymentStatus === 'half-paid') {
-                        amount = 200 + 10;
                     } else {
                         amount = order.price;
                     }
@@ -484,8 +469,6 @@
                     let amount;
                     if (order.paymentStatus === 'paid') {
                         amount = order.hadInterest ? (order.price + 10) : order.price;
-                    } else if (order.paymentStatus === 'half-paid') {
-                        amount = 200 + 10;
                     } else {
                         amount = order.price;
                     }
@@ -526,9 +509,7 @@
                     ordersByDate[date].paidOrders++;
                     const paidAmount = order.hadInterest ? (order.price + 10) : order.price;
                     ordersByDate[date].totalRevenue += paidAmount * order.quantity;
-                } else if (order.paymentStatus === 'half-paid') {
-                    ordersByDate[date].paidOrders++;
-                    ordersByDate[date].totalRevenue += (200 + 10) * order.quantity;
+
                 } else if (order.paymentStatus === 'unpaid') {
                     ordersByDate[date].unpaidOrders++;
                 } else {
@@ -606,11 +587,7 @@
                                 profit += paidAmount * itemQuantity; 
                                 paid++; 
                             }
-                            else if (o.paymentStatus === 'half-paid') {
-                                // For half-paid orders, use temporary price of 200 + 10 pesos
-                                profit += (200 + 10) * itemQuantity;
-                                paid++;
-                            }
+
                             else if (o.paymentStatus === 'unpaid') { 
                                 unpaid += baseCost * itemQuantity; 
                                 unpaidCount++; 
@@ -663,11 +640,7 @@
                                 wProfit += paidAmount * itemQuantity; 
                                 wPaid++; 
                             }
-                            else if (o.paymentStatus === 'half-paid') {
-                                // For half-paid orders, use temporary price of 200 + 10 pesos
-                                wProfit += (200 + 10) * itemQuantity;
-                                wPaid++;
-                            }
+
                             else if (o.paymentStatus === 'unpaid') { 
                                 wUnpaid += baseCost * itemQuantity; 
                                 wUnpaidCount++; 
@@ -717,11 +690,7 @@
                                 items[baseName].profit += paidAmount * itemQuantity; 
                                 items[baseName].paid++; 
                             }
-                            else if (order.paymentStatus === 'half-paid') {
-                                // For half-paid orders, use temporary price of 200 + 10 pesos
-                                items[baseName].profit += (200 + 10) * itemQuantity;
-                                items[baseName].paid++;
-                            }
+
                             else if (order.paymentStatus === 'unpaid') { 
                                 items[baseName].unpaid += baseCost * itemQuantity; 
                                 items[baseName].unpaidCount++; 
@@ -791,12 +760,7 @@
                                     totalPrice = displayPrice * itemQuantity;
                                     totalPriceDescription = `${priceDescription} × ${itemQuantity} = ${formatCurrency(totalPrice)}`;
                                 }
-                            } else if (o.paymentStatus === 'half-paid') {
-                                // For half-paid, calculate: (₱200 × quantity) + ₱10 (interest only once)
-                                const baseTotal = 200 * itemQuantity;
-                                totalPrice = baseTotal + 10;
-                                priceDescription = `₱200 × ${itemQuantity} + ₱10 interest = ${formatCurrency(totalPrice)}`;
-                                totalPriceDescription = priceDescription;
+
                             } else {
                                 displayPrice = basePrice;
                                 priceDescription = formatCurrency(displayPrice);
