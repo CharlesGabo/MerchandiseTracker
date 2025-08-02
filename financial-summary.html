@@ -18,9 +18,10 @@
     <div class="container mt-4">
         <div class="d-flex justify-content-between align-items-center mb-4">
             <h1>Financial Summary</h1>
-            <a href="index.html" class="btn btn-primary">
+            <a href="index.html" class="btn btn-primary me-2">
                 <i class="bi bi-house"></i> Home
             </a>
+
         </div>
         
         <!-- Summary Cards -->
@@ -120,6 +121,8 @@
             </div>
         </div>
 
+
+
         <!-- Monthly/Weekly/Item Breakdown Section -->
         <div class="card mb-4">
             <div class="card-body">
@@ -131,6 +134,7 @@
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <script src="price-reference.js"></script>
     <script src="script.js"></script>
     <script>
         // Initialize charts
@@ -385,7 +389,15 @@
             document.getElementById('paidOrders').textContent = paidOrders;
             document.getElementById('unpaidOrders').textContent = unpaidOrders;
             document.getElementById('inProcessOrders').textContent = inProcessCount;
-            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory];
+            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...deletedOrders];
+            
+            // Debug: Log order counts from each section
+            console.log('Orders from each section:');
+            console.log('Orders:', filteredOrders.length);
+            console.log('In-Process Orders:', filteredInProcess.length);
+            console.log('Order History:', filteredHistory.length);
+            console.log('Deleted Orders:', deletedOrders.length);
+            console.log('Total Orders:', allOrders.length);
             // Payment Status Chart
             const paidAmount = allOrders
                 .filter(order => order.paymentStatus === 'paid')
@@ -418,6 +430,8 @@
             // Add this line to render the new breakdown
             renderMonthlyBreakdown(allOrders);
         }
+
+
 
         function updateSummaryTable(allOrders) {
             const tableBody = document.getElementById('summaryTableBody');
@@ -501,9 +515,20 @@
                 // Calculate summary for the month
                 let profit = 0, unpaid = 0, count = 0, paid = 0, unpaidCount = 0;
                 monthOrders.forEach(o => {
-                    if (o.paymentStatus === 'paid') { profit += o.price * o.quantity; paid++; }
-                    else if (o.paymentStatus === 'unpaid') { unpaid += o.price * o.quantity; unpaidCount++; }
-                    count++;
+                    // Split multiple items in one order and calculate based on base costs
+                    let itemNames = o.itemName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+                    itemNames.forEach(name => {
+                        const baseCost = getItemPrice(name);
+                        if (o.paymentStatus === 'paid') { 
+                            profit += baseCost * o.quantity; 
+                            paid++; 
+                        }
+                        else if (o.paymentStatus === 'unpaid') { 
+                            unpaid += baseCost * o.quantity; 
+                            unpaidCount++; 
+                        }
+                        count++;
+                    });
                 });
                 // Month row
                 const monthChevronId = `chevron-month-${monthKey}`;
@@ -513,7 +538,7 @@
                     <div class="d-flex justify-content-between align-items-center bg-light p-2 border" onclick="toggleDetails('month-details-${monthKey}', this)">
                         <div><span id="${monthChevronId}" class="chevron">&#9654;</span><b>${monthKey}</b></div>
                         <div>
-                            <span class="me-3">Total Profit: <b>${formatCurrency(profit)}</b></span>
+                            <span class="me-3">Total Revenue: <b>${formatCurrency(profit)}</b></span>
                             <span class="me-3">Total Unpaid: <b>${formatCurrency(unpaid)}</b></span>
                             <span class="me-3">Transactions: <b>${count}</b></span>
                             <span class="me-3">Paid: <b>${paid}</b></span>
@@ -539,9 +564,20 @@
                     const weekOrders = weeks[weekKey];
                     let wProfit = 0, wUnpaid = 0, wCount = 0, wPaid = 0, wUnpaidCount = 0;
                     weekOrders.forEach(o => {
-                        if (o.paymentStatus === 'paid') { wProfit += o.price * o.quantity; wPaid++; }
-                        else if (o.paymentStatus === 'unpaid') { wUnpaid += o.price * o.quantity; wUnpaidCount++; }
-                        wCount++;
+                        // Split multiple items in one order and calculate based on base costs
+                        let itemNames = o.itemName.split(/,|\n/).map(s => s.trim()).filter(Boolean);
+                        itemNames.forEach(name => {
+                            const baseCost = getItemPrice(name);
+                            if (o.paymentStatus === 'paid') { 
+                                wProfit += baseCost * o.quantity; 
+                                wPaid++; 
+                            }
+                            else if (o.paymentStatus === 'unpaid') { 
+                                wUnpaid += baseCost * o.quantity; 
+                                wUnpaidCount++; 
+                            }
+                            wCount++;
+                        });
                     });
                     // Parse weekKey to get month and week number
                     const [monthKeyPart, weekNumPart] = weekKey.split('-W');
@@ -554,13 +590,13 @@
                     weekDiv.innerHTML = `
                         <div class="d-flex justify-content-between align-items-center bg-white p-2 border" onclick="toggleDetails('week-details-${weekKey}', this)">
                             <div><span class="chevron">&#9654;</span><b>${weekLabel}</b></div>
-                            <div>
-                                <span class="me-3">Total Profit: <b>${formatCurrency(wProfit)}</b></span>
-                                <span class="me-3">Total Unpaid: <b>${formatCurrency(wUnpaid)}</b></span>
-                                <span class="me-3">Transactions: <b>${wCount}</b></span>
-                                <span class="me-3">Paid: <b>${wPaid}</b></span>
-                                <span class="me-3">Unpaid: <b>${wUnpaidCount}</b></span>
-                            </div>
+                                                    <div>
+                            <span class="me-3">Total Revenue: <b>${formatCurrency(wProfit)}</b></span>
+                            <span class="me-3">Total Unpaid: <b>${formatCurrency(wUnpaid)}</b></span>
+                            <span class="me-3">Transactions: <b>${wCount}</b></span>
+                            <span class="me-3">Paid: <b>${wPaid}</b></span>
+                            <span class="me-3">Unpaid: <b>${wUnpaidCount}</b></span>
+                        </div>
                         </div>
                         <div style="display:none;" class="mt-2 details" id="week-details-${weekKey}"></div>
                     `;
@@ -577,11 +613,16 @@
                             // Clone order and override itemName for transaction table
                             let orderClone = { ...order, displayItemName: name };
                             items[baseName].orders.push(orderClone);
-                            if (order.paymentStatus === 'paid') { items[baseName].profit += order.price * order.quantity; items[baseName].paid++; }
-                            else if (order.paymentStatus === 'unpaid') { items[baseName].unpaid += order.price * order.quantity; items[baseName].unpaidCount++; }
+                            const baseCost = getItemPrice(name);
+                            if (order.paymentStatus === 'paid') { items[baseName].profit += baseCost * order.quantity; items[baseName].paid++; }
+                            else if (order.paymentStatus === 'unpaid') { items[baseName].unpaid += baseCost * order.quantity; items[baseName].unpaidCount++; }
                             items[baseName].count++;
                         });
                     });
+                    
+                    // Debug: Log all item names to see if XL orders exist
+                    console.log('All item names in week:', weekOrders.map(o => o.itemName));
+                    console.log('Grouped items:', Object.keys(items));
                     // For sorting: store latest transaction date for each item group
                     const itemLatestDate = {};
                     Object.keys(items).forEach(baseName => {
@@ -606,22 +647,26 @@
                         itemDiv.innerHTML = `
                             <div class="d-flex justify-content-between align-items-center bg-light p-2 border" onclick="toggleDetails('${safeId}', this)">
                                 <div><span class="chevron">&#9654;</span><b>${baseName}</b></div>
-                                <div>
-                                    <span class="me-3">Total Profit: <b>${formatCurrency(iProfit)}</b></span>
-                                    <span class="me-3">Total Unpaid: <b>${formatCurrency(iUnpaid)}</b></span>
-                                    <span class="me-3">Transactions: <b>${iCount}</b></span>
-                                    <span class="me-3">Paid: <b>${iPaid}</b></span>
-                                    <span class="me-3">Unpaid: <b>${iUnpaidCount}</b></span>
-                                </div>
+                                                        <div>
+                            <span class="me-3">Total Revenue: <b>${formatCurrency(iProfit)}</b></span>
+                            <span class="me-3">Total Unpaid: <b>${formatCurrency(iUnpaid)}</b></span>
+                            <span class="me-3">Transactions: <b>${iCount}</b></span>
+                            <span class="me-3">Paid: <b>${iPaid}</b></span>
+                            <span class="me-3">Unpaid: <b>${iUnpaidCount}</b></span>
+                            <span class="me-3">Base Cost: <b>${formatCurrency(getItemPrice(baseName))}</b></span>
+                        </div>
                             </div>
                             <div style="display:none;" class="mt-2 details" id="${safeId}"></div>
                         `;
                         // Fill in the item details div
                         const itemDetailsDiv = itemDiv.children[1];
                         // Transactions table
-                        let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Price</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
+                        let table = `<div class='table-responsive'><table class='table table-sm table-bordered'><thead><tr><th>Date</th><th>Item Name</th><th>Student Name</th><th>Student Number</th><th>Quantity</th><th>Base Cost</th><th>Payment Status</th><th>Payment Mode</th></tr></thead><tbody>`;
                         itemOrders.forEach(o => {
-                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td>${formatCurrency(o.price)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
+                            const itemPrice = getItemPrice(o.displayItemName);
+                            const detectedSize = extractSizeFromItemName(o.displayItemName);
+                            console.log(`Item: ${o.displayItemName}, Detected Size: ${detectedSize}, Price: ${itemPrice}`);
+                            table += `<tr><td>${(new Date(o.date)).toLocaleDateString()}</td><td>${o.displayItemName}</td><td>${o.studentName || '-'}</td><td>${o.studentNumber || '-'}</td><td>${o.quantity}</td><td>${formatCurrency(itemPrice)}</td><td>${o.paymentStatus}</td><td>${o.paymentMode}</td></tr>`;
                         });
                         table += '</tbody></table></div>';
                         itemDetailsDiv.innerHTML = table;

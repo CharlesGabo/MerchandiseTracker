@@ -1045,11 +1045,7 @@ function updateOrdersList() {
                     cells += `<td rowspan="${allItems.length}">${firstOrder.paymentMode || '-'}</td>`;
                     cells += `<td rowspan="${allItems.length}">${displayTimestamp}</td>`;
                     let statusClass = firstOrder.paymentStatus === 'paid' ? 'bg-success' : (firstOrder.paymentStatus === 'half-paid' ? 'bg-warning' : 'bg-secondary');
-                    let statusContent = firstOrder.paymentStatus === 'unpaid' 
-                        ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openChangePaymentStatusModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1)}</span>`
-                        : (firstOrder.paymentStatus === 'half-paid'
-                            ? `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openHalfPaidToPaidModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`
-                            : `<span class="badge ${statusClass}">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`);
+                    let statusContent = `<span class="badge ${statusClass} clickable" style="cursor:pointer;" onclick="openChangePaymentStatusModal('${firstOrder.studentNumber}', '${firstOrder.timestamp}')">${firstOrder.paymentStatus.charAt(0).toUpperCase() + firstOrder.paymentStatus.slice(1).replace('-', ' ')}</span>`;
                     cells += `<td rowspan="${allItems.length}">${statusContent}</td>`;
                     cells += `<td rowspan="${allItems.length}" class="action-buttons">
                         <button class="btn btn-sm btn-success" onclick="markAsComplete('${firstOrder.studentNumber}', '${firstOrder.timestamp}')"${firstOrder.paymentStatus === 'unpaid' || firstOrder.paymentStatus === 'half-paid' ? ' disabled title=\"Must be fully paid before claiming\"' : ''}>
@@ -2187,56 +2183,7 @@ if (deletedRevertConfirmBtn) {
     }
 } 
 
-let pendingHalfPaidStudentNumber = null;
-let pendingHalfPaidTimestamp = null;
-function openHalfPaidToPaidModal(studentNumber, timestamp) {
-    pendingHalfPaidStudentNumber = studentNumber;
-    pendingHalfPaidTimestamp = timestamp;
-    document.getElementById('halfPaidToPaidInput').value = '';
-    document.getElementById('halfPaidToPaidInvalid').style.display = 'none';
-    const modal = new bootstrap.Modal(document.getElementById('halfPaidToPaidModal'));
-    modal.show();
-}
-const halfPaidToPaidBtn = document.getElementById('halfPaidToPaidBtn');
-if (halfPaidToPaidBtn) {
-    halfPaidToPaidBtn.addEventListener('click', function() {
-        const input = document.getElementById('halfPaidToPaidInput').value.trim();
-        const invalidFeedback = document.getElementById('halfPaidToPaidInvalid');
-        if (input !== 'Paid') {
-            invalidFeedback.style.display = 'block';
-            return;
-        }
-        invalidFeedback.style.display = 'none';
-        // Hide modal
-        const modalEl = document.getElementById('halfPaidToPaidModal');
-        const modal = bootstrap.Modal.getInstance(modalEl);
-        modal.hide();
-        // Actually mark as paid
-        if (pendingHalfPaidStudentNumber && pendingHalfPaidTimestamp) {
-            // Find the order in inProcessOrders and set paymentStatus to 'paid'
-            const order = inProcessOrders.find(order => order.studentNumber === pendingHalfPaidStudentNumber && order.timestamp === pendingHalfPaidTimestamp);
-            if (order) {
-                order.paymentStatus = 'paid';
-                order.hadInterest = true; // Track that this order had interest
-                saveOrders();
-                updateOrdersList();
-                showNotification('Order marked as paid.', 'success');
-            }
-        }
-        pendingHalfPaidStudentNumber = null;
-        pendingHalfPaidTimestamp = null;
-    });
-    // Allow pressing Enter in the input to trigger the OK button
-    const halfPaidToPaidInput = document.getElementById('halfPaidToPaidInput');
-    if (halfPaidToPaidInput) {
-        halfPaidToPaidInput.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter') {
-                e.preventDefault();
-                halfPaidToPaidBtn.click();
-            }
-        });
-    }
-} 
+ 
 
 // Add this function to the global scope
 window.toggleEmailVisibility = function(emailId, email, btn) {
@@ -2540,7 +2487,45 @@ function updateOrdersSummary() {
 function openChangePaymentStatusModal(studentNumber, timestamp) {
     pendingChangeStatusStudentNumber = studentNumber;
     pendingChangeStatusTimestamp = timestamp;
+    
+    // Find the current order to get its payment status
+    const order = inProcessOrders.find(order => 
+        order.studentNumber === studentNumber && order.timestamp === timestamp
+    );
+    
+    if (order) {
+        // Pre-select the current status in the dropdown
+        const statusSelect = document.getElementById('paymentStatusSelect');
+        if (statusSelect) {
+            statusSelect.value = order.paymentStatus;
+        }
+    }
+    
+    // Clear the input field
+    const input = document.getElementById('changePaymentStatusInput');
+    if (input) {
+        input.value = '';
+    }
+    
+    // Hide any previous error messages
+    const invalidFeedback = document.getElementById('changePaymentStatusInvalid');
+    if (invalidFeedback) {
+        invalidFeedback.style.display = 'none';
+    }
+    
     const modal = new bootstrap.Modal(document.getElementById('changePaymentStatusModal'));
+    modal.show();
+}
+
+// Add back the half-paid to paid modal functionality
+let pendingHalfPaidStudentNumber = null;
+let pendingHalfPaidTimestamp = null;
+function openHalfPaidToPaidModal(studentNumber, timestamp) {
+    pendingHalfPaidStudentNumber = studentNumber;
+    pendingHalfPaidTimestamp = timestamp;
+    document.getElementById('halfPaidToPaidInput').value = '';
+    document.getElementById('halfPaidToPaidInvalid').style.display = 'none';
+    const modal = new bootstrap.Modal(document.getElementById('halfPaidToPaidModal'));
     modal.show();
 }
 
@@ -2611,7 +2596,49 @@ if (changePaymentStatusBtn) {
             }
         });
     }
-} 
+}
+
+// Add event listener for half-paid to paid button
+const halfPaidToPaidBtn = document.getElementById('halfPaidToPaidBtn');
+if (halfPaidToPaidBtn) {
+    halfPaidToPaidBtn.addEventListener('click', function() {
+        const input = document.getElementById('halfPaidToPaidInput').value.trim();
+        const invalidFeedback = document.getElementById('halfPaidToPaidInvalid');
+        if (input !== 'Paid') {
+            invalidFeedback.style.display = 'block';
+            return;
+        }
+        invalidFeedback.style.display = 'none';
+        // Hide modal
+        const modalEl = document.getElementById('halfPaidToPaidModal');
+        const modal = bootstrap.Modal.getInstance(modalEl);
+        modal.hide();
+        // Actually mark as paid
+        if (pendingHalfPaidStudentNumber && pendingHalfPaidTimestamp) {
+            // Find the order in inProcessOrders and set paymentStatus to 'paid'
+            const order = inProcessOrders.find(order => order.studentNumber === pendingHalfPaidStudentNumber && order.timestamp === pendingHalfPaidTimestamp);
+            if (order) {
+                order.paymentStatus = 'paid';
+                order.hadInterest = true; // Track that this order had interest
+                saveOrders();
+                updateOrdersList();
+                showNotification('Order marked as paid.', 'success');
+            }
+        }
+        pendingHalfPaidStudentNumber = null;
+        pendingHalfPaidTimestamp = null;
+    });
+    // Allow pressing Enter in the input to trigger the OK button
+    const halfPaidToPaidInput = document.getElementById('halfPaidToPaidInput');
+    if (halfPaidToPaidInput) {
+        halfPaidToPaidInput.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                halfPaidToPaidBtn.click();
+            }
+        });
+    }
+}
 
 function openClaimToHistoryModal(studentNumber, timestamp) {
     pendingClaimToHistoryStudentNumber = studentNumber;
