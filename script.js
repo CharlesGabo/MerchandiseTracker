@@ -1055,21 +1055,21 @@ function updateOrdersList() {
 
     // Update Order History list
     if (orderHistoryList) {
-        // Group orderHistory by date
+        // Group orderHistory by claim date (not ordered date)
         const dateGroups = {};
         orderHistory.forEach(order => {
-            let orderDate = '';
-            if (order.timestamp) {
-                if (order.timestamp.length > 10 && order.timestamp.includes('T')) {
-                    orderDate = order.timestamp.split('T')[0];
+            let claimDate = '';
+            if (order.claimDate) {
+                if (order.claimDate.length > 10 && order.claimDate.includes('T')) {
+                    claimDate = order.claimDate.split('T')[0];
                 } else {
-                    orderDate = order.timestamp.split(' ')[0];
+                    claimDate = order.claimDate.split(' ')[0];
                 }
             }
-            if (!dateGroups[orderDate]) {
-                dateGroups[orderDate] = [];
+            if (!dateGroups[claimDate]) {
+                dateGroups[claimDate] = [];
             }
-            dateGroups[orderDate].push(order);
+            dateGroups[claimDate].push(order);
         });
         // Sort dates in descending order (newest first)
         const sortedDates = Object.keys(dateGroups).sort((a, b) => {
@@ -1081,7 +1081,7 @@ function updateOrdersList() {
             // Add date header
             const dateHeader = document.createElement('tr');
             dateHeader.className = 'date-header';
-            dateHeader.innerHTML = `<td colspan="13" class="bg-light fw-bold">${date}</td>`;
+            dateHeader.innerHTML = `<td colspan="13" class="bg-light fw-bold">${date || '- (No Claim Date)'}</td>`;
             orderHistoryList.appendChild(dateHeader);
             // Group by student number and timestamp within each date
             let grouped = {};
@@ -1091,10 +1091,10 @@ function updateOrdersList() {
                 grouped[key].push(order);
             });
             let orderKeys = Object.keys(grouped);
-            // Sort by timestamp (newest first)
+            // Sort by claimDate (newest first)
             orderKeys.sort((a, b) => {
-                const aDate = new Date(grouped[a][0].timestamp);
-                const bDate = new Date(grouped[b][0].timestamp);
+                const aDate = new Date(grouped[a][0].claimDate || grouped[a][0].timestamp);
+                const bDate = new Date(grouped[b][0].claimDate || grouped[b][0].timestamp);
                 return bDate - aDate;
             });
             orderKeys.forEach((key, groupIdx) => {
