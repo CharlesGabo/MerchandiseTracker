@@ -349,8 +349,8 @@
         }
 
         function updateFinancialSummary() {
-            // Normalize all paymentStatus values before calculations
-            [...orders, ...inProcessOrders, ...orderHistory, ...deletedOrders].forEach(order => {
+            // Normalize all paymentStatus values before calculations (exclude deleted orders)
+            [...orders, ...inProcessOrders, ...orderHistory].forEach(order => {
                 if (order && order.paymentStatus) order.paymentStatus = order.paymentStatus.toLowerCase().trim();
             });
             const startDate = document.getElementById('startDate').value;
@@ -375,20 +375,8 @@
                     return orderDate >= start && orderDate <= end;
                 });
             }
-            // Create filtered deleted orders array for date filtering
-            let filteredDeleted = deletedOrders;
-            if (startDate && endDate) {
-                const start = new Date(startDate);
-                const end = new Date(endDate);
-                end.setHours(23, 59, 59, 999);
-                filteredDeleted = deletedOrders.filter(order => {
-                    const orderDate = new Date(order.date);
-                    return orderDate >= start && orderDate <= end;
-                });
-            }
-            
-            // Include all sections in calculations
-            const allFilteredOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...filteredDeleted];
+            // Exclude deleted orders from all calculations
+            const allFilteredOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory];
             
             const totalRevenue = allFilteredOrders
                 .filter(order => order.paymentStatus === 'paid')
@@ -411,14 +399,13 @@
             document.getElementById('unpaidOrders').textContent = unpaidOrders;
             document.getElementById('inProcessOrders').textContent = inProcessCount;
             document.getElementById('totalOrders').textContent = allFilteredOrders.length;
-            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory, ...filteredDeleted];
+            const allOrders = [...filteredOrders, ...filteredInProcess, ...filteredHistory];
             
             // Debug: Log order counts from each section
             console.log('Orders from each section:');
             console.log('Orders:', filteredOrders.length);
             console.log('In-Process Orders:', filteredInProcess.length);
             console.log('Order History:', filteredHistory.length);
-            console.log('Deleted Orders:', filteredDeleted.length);
             console.log('Total Orders:', allFilteredOrders.length);
             
             // Debug: Log payment status breakdown
@@ -820,7 +807,7 @@
             initializeCharts();
             updateFinancialSummary();
             // Populate filter dropdown once on page load
-            globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory, ...deletedOrders]);
+            globalItemSummary = buildItemSummary([...orders, ...inProcessOrders, ...orderHistory]);
             document.getElementById('itemFilter').addEventListener('change', () => {
                 // updateItemSummaryTable();
             });
