@@ -1,3 +1,28 @@
+@import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;900&display=swap');
+
+:root {
+  --gold: #FFD700;
+  --black: #181818;
+}
+
+.navbar {
+  background: var(--black) !important;
+}
+
+.navbar-brand, .navbar-brand:hover {
+  font-family: 'Montserrat', Arial, sans-serif;
+  font-weight: 900;
+  color: var(--gold) !important;
+  letter-spacing: 2px;
+}
+
+.btn-primary { background: var(--gold); color: var(--black); border: none; font-weight: 700; }
+.btn-primary:hover, .btn-primary:focus { background: var(--black); color: var(--gold); }
+
+.btn-light { color: var(--black); border-color: var(--gold); }
+.btn-light:hover { background: var(--gold); color: var(--black); border-color: var(--gold); }
+
+.with-fixed-navbar { margin-top: 100px; }
 body {
     background-color: #f8f9fa;
 }
