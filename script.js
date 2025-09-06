@@ -1364,6 +1364,27 @@ if (claimConfirmBtn) {
                 order.studentNumber === pendingClaimStudentNumber && order.timestamp === pendingClaimTimestamp
             );
             if (order) {
+                // --- Google Form Auto-Submit ---
+                const formUrl = 'https://docs.google.com/forms/d/12pP-qFsTJeJunZ_j1gX3BoDVZKBnwMU_rfkXlXHK5fQ/formResponse';
+                const formData = new FormData();
+                formData.append('entry.317026328', order.formIndex ? order.formIndex.toString().padStart(4, '0') : ''); // Order Number
+                formData.append('entry.138311930', order.studentNumber || ''); // Student Number
+                formData.append('entry.1797150022', order.studentName || ''); // Student Name
+                formData.append('entry.648070552', order.itemName || ''); // Order Items
+                formData.append('entry.1005297104', order.price ? order.price.toString() : ''); // Total Price
+                formData.append('entry.1804953021', order.paymentMode || ''); // Cash/Payment Method
+                formData.append('entry.386016428', order.gcashReference || ''); // Gcash Reference Number
+                formData.append('entry.1931265776', order.email || ''); // Email
+                fetch(formUrl, {
+                    method: 'POST',
+                    mode: 'no-cors',
+                    body: formData
+                }).then(() => {
+                    // Optionally show a notification or do nothing
+                }).catch((err) => {
+                    // Optionally handle error
+                });
+                // --- End Google Form Auto-Submit ---
                 // Add claim date to the order
                 const now = new Date();
                 order.claimDate = `${now.getFullYear()}-${(now.getMonth()+1).toString().padStart(2,'0')}-${now.getDate().toString().padStart(2,'0')} ${now.getHours().toString().padStart(2,'0')}:${now.getMinutes().toString().padStart(2,'0')}`;
@@ -2692,4 +2713,21 @@ if (claimToHistoryBtn) {
             }
         });
     }
+}
+
+// Prefill Google Form for Claim
+function openPrefilledClaimForm(order) {
+    const formUrl = 'https://docs.google.com/forms/d/12pP-qFsTJeJunZ_j1gX3BoDVZKBnwMU_rfkXlXHK5fQ/viewform';
+    const params = [
+        'entry.317026328=' + encodeURIComponent(order.formIndex ? order.formIndex.toString().padStart(4, '0') : ''), // Order Number
+        'entry.138311930=' + encodeURIComponent(order.studentNumber || ''), // Student Number
+        'entry.1797150022=' + encodeURIComponent(order.studentName || ''), // Student Name
+        'entry.1977680464=' + encodeURIComponent(order.section || ''), // Section
+        'entry.648070552=' + encodeURIComponent(order.itemName || ''), // Order Items
+        'entry.1005297104=' + encodeURIComponent(order.price ? order.price.toString() : ''), // Total Price
+        'entry.1804953021=' + encodeURIComponent(order.paymentMode || ''), // Cash/Payment Method
+        'entry.386016428=' + encodeURIComponent(order.gcashReference || '') // Gcash Reference Number
+    ];
+    const prefillUrl = formUrl + '?' + params.join('&');
+    window.open(prefillUrl, '_blank');
 }
